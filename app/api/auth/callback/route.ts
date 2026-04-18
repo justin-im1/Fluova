@@ -2,12 +2,21 @@ import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 
+function getSafeRedirect(raw: string | null): string {
+  if (!raw) return "/dashboard";
+  // Only allow relative paths that start with / and don't contain protocol-relative tricks
+  if (raw.startsWith("/") && !raw.startsWith("//") && !raw.includes("://")) {
+    return raw;
+  }
+  return "/dashboard";
+}
+
 export async function GET(request: Request) {
   const requestUrl = new URL(request.url);
   const code = requestUrl.searchParams.get("code");
   const tokenHash = requestUrl.searchParams.get("token_hash");
   const type = requestUrl.searchParams.get("type");
-  const next = requestUrl.searchParams.get("next") ?? "/dashboard";
+  const next = getSafeRedirect(requestUrl.searchParams.get("next"));
 
   const cookieStore = await cookies();
 
@@ -36,7 +45,7 @@ export async function GET(request: Request) {
     }
   }
 
-  // Token hash flow (custom Magic Link template)
+  // Token hash flow (magic link)
   if (tokenHash && (type === "email" || type === "magiclink")) {
     const { error } = await supabase.auth.verifyOtp({
       token_hash: tokenHash,

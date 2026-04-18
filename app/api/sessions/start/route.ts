@@ -1,6 +1,7 @@
 import { getServerUser } from "@/lib/auth/getServerUser";
 import { createAdminClient } from "@/lib/supabase/admin";
-import type { Session } from "@/lib/domain/types";
+import type { Session, SessionType } from "@/lib/domain/types";
+import { VALID_SESSION_TYPES } from "@/lib/domain/types";
 import { okResponse, errorResponse } from "@/lib/api/response";
 import { NextRequest } from "next/server";
 
@@ -10,7 +11,11 @@ export async function POST(request: NextRequest) {
     return errorResponse("unauthorized", "Not authenticated", 401);
   }
 
-  let body: { focus_duration_sec: number; break_duration_sec: number };
+  let body: {
+    focus_duration_sec: number;
+    break_duration_sec: number;
+    session_type?: string;
+  };
   try {
     body = await request.json();
   } catch {
@@ -25,6 +30,11 @@ export async function POST(request: NextRequest) {
     return errorResponse("invalid_body", "focus_duration_sec and break_duration_sec required", 400);
   }
 
+  const sessionType: SessionType | null =
+    body.session_type && VALID_SESSION_TYPES.has(body.session_type)
+      ? (body.session_type as SessionType)
+      : null;
+
   const supabase = createAdminClient();
   const now = new Date().toISOString();
 
@@ -33,38 +43,53 @@ export async function POST(request: NextRequest) {
     .from("profiles")
     .upsert({ id: user.id, display_name: null }, { onConflict: "id" });
 
-  // End any existing active session
-  await supabase
-    .from("sessions")
-    .update({ status: "ended", ended_at: now })
-    .eq("user_id", user.id)
-    .eq("status", "active");
+  // End any existing active session, then insert the new one.
+  // The partial unique index (user_id WHERE status='active') enforces at most
+  // one active session at the DB level, so we retry once on conflict.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let sessionRow: any;
 
-  const { data: session, error } = await supabase
-    .from("sessions")
-    .insert({
-      user_id: user.id,
-      status: "active",
-      focus_duration_sec,
-      break_duration_sec,
-      started_at: now,
-    })
-    .select()
-    .single();
+  for (let attempt = 0; attempt < 2; attempt++) {
+    await supabase
+      .from("sessions")
+      .update({ status: "ended", ended_at: now })
+      .eq("user_id", user.id)
+      .eq("status", "active");
 
-  if (error) {
-    return errorResponse("db_error", error.message, 500);
+    const { data, error } = await supabase
+      .from("sessions")
+      .insert({
+        user_id: user.id,
+        status: "active",
+        focus_duration_sec,
+        break_duration_sec,
+        session_type: sessionType,
+        started_at: now,
+      })
+      .select()
+      .single();
+
+    if (!error && data) {
+      sessionRow = data;
+      break;
+    }
+
+    // Unique constraint violation — another request raced us. Retry once.
+    if (error?.code === "23505" && attempt === 0) continue;
+
+    return errorResponse("db_error", error?.message ?? "Unknown error", 500);
   }
 
-  const result: Session = {
-    id: session.id,
-    user_id: session.user_id,
-    status: session.status,
-    focus_duration_sec: session.focus_duration_sec,
-    break_duration_sec: session.break_duration_sec,
-    started_at: session.started_at,
-    ended_at: session.ended_at,
+  const session: Session = {
+    id: sessionRow.id,
+    user_id: sessionRow.user_id,
+    status: sessionRow.status as Session["status"],
+    focus_duration_sec: sessionRow.focus_duration_sec,
+    break_duration_sec: sessionRow.break_duration_sec,
+    session_type: sessionRow.session_type ?? null,
+    started_at: sessionRow.started_at,
+    ended_at: sessionRow.ended_at,
   };
 
-  return okResponse({ session: result });
+  return okResponse({ session });
 }

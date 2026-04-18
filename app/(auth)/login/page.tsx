@@ -1,24 +1,19 @@
 "use client";
 
-import { useState, useEffect, Suspense } from "react";
+import { useState, Suspense } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useSearchParams } from "next/navigation";
 
 function LoginForm() {
   const searchParams = useSearchParams();
+  const authError = searchParams.get("error") === "auth";
   const [email, setEmail] = useState("");
   const [status, setStatus] = useState<"idle" | "loading" | "success" | "error">(
-    "idle"
+    authError ? "error" : "idle"
   );
-  const [message, setMessage] = useState("");
-
-  useEffect(() => {
-    const err = searchParams.get("error");
-    if (err === "auth") {
-      setStatus("error");
-      setMessage("Authentication failed. Please try again.");
-    }
-  }, [searchParams]);
+  const [message, setMessage] = useState(
+    authError ? "Authentication failed. Please try again." : ""
+  );
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -29,7 +24,7 @@ function LoginForm() {
     const { error } = await supabase.auth.signInWithOtp({
       email,
       options: {
-        emailRedirectTo: `${window.location.origin}/api/auth/callback`,
+        emailRedirectTo: `${window.location.origin}/callback`,
       },
     });
 
@@ -44,13 +39,13 @@ function LoginForm() {
   }
 
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-zinc-50 px-4 dark:bg-zinc-950">
-      <div className="w-full max-w-sm space-y-8 rounded-xl border border-zinc-200 bg-white p-8 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+    <div className="flex min-h-screen flex-col items-center justify-center bg-bg px-4">
+      <div className="w-full max-w-sm space-y-8 rounded-xl border border-edge bg-surface p-8">
         <div className="text-center">
-          <h1 className="text-2xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
+          <h1 className="text-2xl font-semibold tracking-tight text-fg">
             Fluova
           </h1>
-          <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
+          <p className="mt-1 text-sm text-muted">
             Sign in with your email
           </p>
         </div>
@@ -59,7 +54,7 @@ function LoginForm() {
           <div>
             <label
               htmlFor="email"
-              className="block text-sm font-medium text-zinc-700 dark:text-zinc-300"
+              className="block text-sm font-medium text-secondary"
             >
               Email
             </label>
@@ -70,7 +65,7 @@ function LoginForm() {
               onChange={(e) => setEmail(e.target.value)}
               required
               placeholder="you@example.com"
-              className="mt-1 block w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-zinc-900 placeholder-zinc-400 focus:border-zinc-500 focus:outline-none focus:ring-1 focus:ring-zinc-500 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-100 dark:placeholder-zinc-500"
+              className="mt-1 block w-full rounded-lg border border-edge bg-surface-elevated px-3 py-2 text-fg placeholder-muted/50 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
               disabled={status === "loading"}
             />
           </div>
@@ -79,8 +74,8 @@ function LoginForm() {
             <p
               className={`text-sm ${
                 status === "error"
-                  ? "text-red-600 dark:text-red-400"
-                  : "text-zinc-600 dark:text-zinc-400"
+                  ? "text-red-400"
+                  : "text-secondary"
               }`}
             >
               {message}
@@ -90,7 +85,7 @@ function LoginForm() {
           <button
             type="submit"
             disabled={status === "loading"}
-            className="w-full rounded-lg bg-zinc-900 px-4 py-2.5 font-medium text-white transition-colors hover:bg-zinc-800 disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200"
+            className="w-full rounded-lg bg-primary px-4 py-2.5 font-medium text-white transition-colors hover:bg-primary-hover disabled:opacity-50"
           >
             {status === "loading" ? "Sending…" : "Send link"}
           </button>
@@ -103,8 +98,8 @@ function LoginForm() {
 export default function LoginPage() {
   return (
     <Suspense fallback={
-      <div className="flex min-h-screen items-center justify-center bg-zinc-50 dark:bg-zinc-950">
-        <div className="h-8 w-48 animate-pulse rounded bg-zinc-200 dark:bg-zinc-800" />
+      <div className="flex min-h-screen items-center justify-center bg-bg">
+        <div className="h-8 w-48 animate-pulse rounded bg-surface" />
       </div>
     }>
       <LoginForm />

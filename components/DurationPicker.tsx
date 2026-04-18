@@ -47,42 +47,44 @@ export default function DurationPicker({
   return (
     <div className="space-y-4">
       {recommendation && (
-        <div>
-          <button
-            type="button"
-            onClick={selectRecommended}
-            className={`w-full rounded-lg border-2 px-4 py-3 text-left transition-colors ${
-              focusSec === recommendation.recommended_focus_duration_sec
-                ? "border-zinc-900 bg-zinc-100 dark:border-zinc-100 dark:bg-zinc-800"
-                : "border-zinc-200 hover:border-zinc-300 dark:border-zinc-700 dark:hover:border-zinc-600"
-            }`}
-          >
-            <span className="font-medium">
-              Recommended: {recommendation.recommended_focus_duration_sec / 60}{" "}
-              min focus / {recommendation.recommended_break_duration_sec / 60}{" "}
-              min break
+        <button
+          type="button"
+          onClick={selectRecommended}
+          className={`w-full rounded-xl border-2 p-4 text-left transition-colors ${
+            focusSec === recommendation.recommended_focus_duration_sec
+              ? "border-primary bg-primary/10"
+              : "border-edge hover:border-muted/30"
+          }`}
+        >
+          <div className="flex items-center gap-2">
+            <span className="text-[13px] font-semibold text-fg">
+              Recommended
             </span>
-            <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
-              {recommendation.rationale}
-            </p>
-          </button>
-        </div>
+            <span className="rounded-full bg-primary/15 px-2 py-0.5 text-[11px] font-medium text-primary">
+              {Math.round(recommendation.estimated_session_score * 100)}% est. score
+            </span>
+          </div>
+          <p className="mt-1 text-[13px] tabular-nums text-secondary">
+            {recommendation.recommended_focus_duration_sec / 60} min focus /{" "}
+            {recommendation.recommended_break_duration_sec / 60} min break
+          </p>
+        </button>
       )}
 
       <div>
-        <p className="mb-2 text-sm font-medium text-zinc-700 dark:text-zinc-300">
+        <p className="mb-2 text-[11px] font-medium uppercase tracking-wider text-muted">
           Presets
         </p>
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+        <div className="grid grid-cols-3 gap-2">
           {PRESETS.map((preset) => (
             <button
               key={preset.focusSec}
               type="button"
               onClick={() => selectPreset(preset.focusSec)}
-              className={`rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${
+              className={`rounded-lg border px-3 py-2 text-[13px] font-medium transition-colors ${
                 focusSec === preset.focusSec
-                  ? "border-zinc-900 bg-zinc-900 text-white dark:border-zinc-100 dark:bg-zinc-100 dark:text-zinc-900"
-                  : "border-zinc-200 hover:border-zinc-300 dark:border-zinc-700 dark:hover:border-zinc-600"
+                  ? "border-primary bg-primary text-white"
+                  : "border-edge text-secondary hover:border-muted/30"
               }`}
             >
               {preset.label}
@@ -91,9 +93,9 @@ export default function DurationPicker({
         </div>
       </div>
 
-      <div className="text-sm text-zinc-500 dark:text-zinc-400">
-        Selected: {focusSec / 60} min focus, {breakSec / 60} min break
-      </div>
+      <p className="text-[13px] tabular-nums text-muted">
+        {focusSec / 60} min focus · {breakSec / 60} min break
+      </p>
     </div>
   );
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 type Props = {
   focusDurationSec: number;
@@ -20,6 +20,11 @@ export default function SessionTimer({
   onComplete,
 }: Props) {
   const [remainingSec, setRemainingSec] = useState<number | null>(null);
+  const completeFired = useRef(false);
+
+  useEffect(() => {
+    completeFired.current = false;
+  }, [focusDurationSec, startedAt]);
 
   useEffect(() => {
     const start = new Date(startedAt).getTime();
@@ -30,7 +35,8 @@ export default function SessionTimer({
       const remaining = Math.max(0, focusDurationSec - elapsedSec);
       setRemainingSec(remaining);
 
-      if (remaining <= 0 && onComplete) {
+      if (remaining <= 0 && onComplete && !completeFired.current) {
+        completeFired.current = true;
         onComplete();
       }
     }
@@ -42,7 +48,7 @@ export default function SessionTimer({
 
   if (remainingSec === null) {
     return (
-      <div className="text-4xl font-mono font-medium text-zinc-500">
+      <div className="text-6xl font-mono font-semibold tabular-nums text-edge sm:text-7xl">
         --:--
       </div>
     );
@@ -52,8 +58,8 @@ export default function SessionTimer({
 
   return (
     <div
-      className={`text-6xl font-mono font-medium tabular-nums ${
-        isComplete ? "text-green-600 dark:text-green-400" : "text-zinc-900 dark:text-zinc-50"
+      className={`text-6xl font-mono font-semibold tabular-nums transition-colors duration-300 sm:text-7xl ${
+        isComplete ? "text-emerald-400/90" : "text-fg"
       }`}
     >
       {formatTime(remainingSec)}

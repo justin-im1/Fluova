@@ -2,6 +2,7 @@ import { getServerUser } from "@/lib/auth/getServerUser";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { UserProfile } from "@/lib/domain/types";
 import { okResponse, errorResponse } from "@/lib/api/response";
+import { NextRequest } from "next/server";
 
 export async function GET() {
   const user = await getServerUser();
@@ -46,4 +47,52 @@ export async function GET() {
     created_at: profile.created_at,
   };
   return okResponse({ profile: result });
+}
+
+/**
+ * PATCH /api/me
+ * Body: { daily_session_goal: number }
+ * Updates the user's daily session goal in user_pomodoro_prefs.
+ */
+export async function PATCH(request: NextRequest) {
+  const user = await getServerUser();
+  if (!user) {
+    return errorResponse("unauthorized", "Not authenticated", 401);
+  }
+
+  let body: { daily_session_goal?: number };
+  try {
+    body = await request.json();
+  } catch {
+    return errorResponse("invalid_body", "Invalid JSON body", 400);
+  }
+
+  const { daily_session_goal } = body;
+  if (
+    daily_session_goal === undefined ||
+    !Number.isInteger(daily_session_goal) ||
+    daily_session_goal < 1 ||
+    daily_session_goal > 10
+  ) {
+    return errorResponse(
+      "invalid_body",
+      "daily_session_goal must be an integer between 1 and 10",
+      400
+    );
+  }
+
+  const supabase = createAdminClient();
+
+  const { error } = await supabase
+    .from("user_pomodoro_prefs")
+    .upsert(
+      { user_id: user.id, daily_session_goal, updated_at: new Date().toISOString() },
+      { onConflict: "user_id" }
+    );
+
+  if (error) {
+    return errorResponse("db_error", error.message, 500);
+  }
+
+  return okResponse({ daily_session_goal });
 }

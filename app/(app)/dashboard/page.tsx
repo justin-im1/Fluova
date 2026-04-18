@@ -1,6 +1,6 @@
+import { Suspense } from "react";
 import { getServerUser } from "@/lib/auth/getServerUser";
 import { redirect } from "next/navigation";
-import Link from "next/link";
 import DashboardClient from "./DashboardClient";
 
 export default async function DashboardPage() {
@@ -10,17 +10,23 @@ export default async function DashboardPage() {
   }
 
   return (
-    <div className="space-y-8">
-      <div>
-        <h1 className="text-2xl font-semibold text-zinc-900 dark:text-zinc-50">
-          Dashboard
-        </h1>
-        <p className="mt-1 text-zinc-500 dark:text-zinc-400">
-          Start a focus session or review your history.
-        </p>
-      </div>
-
+    <Suspense
+      fallback={
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_380px]">
+          <div className="space-y-6">
+            <div className="h-52 animate-pulse rounded-2xl bg-surface" />
+            <div className="h-56 animate-pulse rounded-2xl bg-surface" />
+          </div>
+          <div className="space-y-4">
+            <div className="h-[72px] animate-pulse rounded-2xl bg-surface" />
+            <div className="h-[72px] animate-pulse rounded-2xl bg-surface" />
+            <div className="h-[72px] animate-pulse rounded-2xl bg-surface" />
+            <div className="h-64 animate-pulse rounded-2xl bg-surface" />
+          </div>
+        </div>
+      }
+    >
       <DashboardClient />
-    </div>
+    </Suspense>
   );
 }
