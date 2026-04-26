@@ -25,7 +25,8 @@ export async function GET(request: NextRequest) {
     .limit(limit);
 
   if (sessionsError) {
-    return errorResponse("db_error", sessionsError.message, 500);
+    console.error("[history] Failed to fetch sessions:", sessionsError.message);
+    return errorResponse("db_error", "Failed to fetch history", 500);
   }
 
   const { data: blocks, error: blocksError } = await supabase
@@ -36,7 +37,8 @@ export async function GET(request: NextRequest) {
     .limit(limit);
 
   if (blocksError) {
-    return errorResponse("db_error", blocksError.message, 500);
+    console.error("[history] Failed to fetch blocks:", blocksError.message);
+    return errorResponse("db_error", "Failed to fetch history", 500);
   }
 
   return okResponse({

@@ -1,6 +1,7 @@
 "use client";
 
 import type { Recommendation } from "@/lib/domain/types";
+import { getBreakDurationForFocus } from "@/lib/recommendation/features";
 
 const PRESETS = [
   { label: "25 min", focusSec: 1500 },
@@ -9,13 +10,8 @@ const PRESETS = [
   { label: "40 min", focusSec: 2400 },
   { label: "45 min", focusSec: 2700 },
   { label: "50 min", focusSec: 3000 },
+  { label: "55 min", focusSec: 3300 },
 ];
-
-function getBreakForFocus(focusSec: number): number {
-  if (focusSec <= 1800) return 300;
-  if (focusSec <= 2700) return 480;
-  return 600;
-}
 
 type Props = {
   recommendation: Recommendation | null;
@@ -41,7 +37,7 @@ export default function DurationPicker({
 
   function selectPreset(presetFocusSec: number) {
     onFocusChange(presetFocusSec);
-    onBreakChange(getBreakForFocus(presetFocusSec));
+    onBreakChange(getBreakDurationForFocus(presetFocusSec));
   }
 
   return (

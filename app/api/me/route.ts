@@ -19,7 +19,8 @@ export async function GET() {
     .single();
 
   if (fetchError && fetchError.code !== "PGRST116") {
-    return errorResponse("db_error", fetchError.message, 500);
+    console.error("[me] Failed to fetch profile:", fetchError.message);
+    return errorResponse("db_error", "Failed to fetch profile", 500);
   }
 
   if (!profile) {
@@ -30,7 +31,8 @@ export async function GET() {
       .single();
 
     if (insertError) {
-      return errorResponse("db_error", insertError.message, 500);
+      console.error("[me] Failed to create profile:", insertError.message);
+      return errorResponse("db_error", "Failed to fetch profile", 500);
     }
 
     const result: UserProfile = {
@@ -91,7 +93,8 @@ export async function PATCH(request: NextRequest) {
     );
 
   if (error) {
-    return errorResponse("db_error", error.message, 500);
+    console.error("[me] Failed to update prefs:", error.message);
+    return errorResponse("db_error", "Failed to update settings", 500);
   }
 
   return okResponse({ daily_session_goal });

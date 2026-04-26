@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import type { Recommendation, FocusBlock, ConfidenceLevel, FatigueState, PlanBlock } from "@/lib/domain/types";
 import { SESSION_TYPE_LABELS } from "@/lib/domain/types";
+import { getLocalTimeBucket } from "@/lib/domain/time";
 import DurationChart from "@/components/DurationChart";
 import TimeOfDayChart from "@/components/TimeOfDayChart";
 import TrendSparkline from "@/components/TrendSparkline";
@@ -37,20 +38,17 @@ type Stats = {
   goal_suggestion: number | null;
   week_this: WeekData;
   week_last: WeekData;
-  /** Rolling average reward over last 7 blocks, scaled 0–100. Null if < 2 blocks. */
   rhythm_score: number | null;
-  /** Delta vs prior 7 blocks. Positive = improving. Null if < 9 total blocks. */
   rhythm_score_delta: number | null;
+  /** Fatigue ratings oldest→newest (1–5). Empty when no rated sessions. */
+  fatigue_trend_data: number[];
+  /** Average fatigue rating; null when no rated sessions. */
+  fatigue_trend_avg: number | null;
+  /** Recommendation acceptance rate (0–1); null when < 3 events. */
+  recommendation_acceptance_rate: number | null;
+  /** Best focus duration (minutes) per session type based on stored reward_v1. */
+  best_duration_by_context: Record<string, number>;
 };
-
-// ── Local time bucket (uses browser clock, not UTC) ───────────────────────────
-function getLocalTimeBucket(): TimeBucket {
-  const hour = new Date().getHours();
-  if (hour >= 5 && hour < 12) return "morning";
-  if (hour >= 12 && hour < 17) return "afternoon";
-  if (hour >= 17 && hour < 22) return "evening";
-  return "night";
-}
 
 // ── Confidence badge config ───────────────────────────────────────────────────
 const CONFIDENCE_CONFIG: Record<ConfidenceLevel, { label: string; dotColor: string }> = {
@@ -249,6 +247,19 @@ export default function DashboardClient() {
                 }
               />
               <StreakCard current={stats.current_streak} longest={stats.longest_streak} />
+              {stats.recommendation_acceptance_rate !== null && (
+                <MetricCard
+                  label="Rec. accepted"
+                  value={`${Math.round(stats.recommendation_acceptance_rate * 100)}%`}
+                  sublabel={
+                    stats.recommendation_acceptance_rate >= 0.8
+                      ? "Usually following Fluova"
+                      : stats.recommendation_acceptance_rate >= 0.5
+                      ? "Mixed acceptance"
+                      : "Often overriding"
+                  }
+                />
+              )}
             </div>
 
             {/* Daily goal */}
@@ -356,6 +367,23 @@ export default function DashboardClient() {
                   }
                   return null;
                 })()}
+              </div>
+            )}
+
+            {/* Fatigue trend — visible once ≥5 sessions have a fatigue rating */}
+            {stats.fatigue_trend_data.length >= 5 && (
+              <div className="mt-3 rounded-2xl border border-edge/30 bg-surface px-5 py-4">
+                <FatigueTrendCard
+                  data={stats.fatigue_trend_data}
+                  avg={stats.fatigue_trend_avg}
+                />
+              </div>
+            )}
+
+            {/* Best duration by session type */}
+            {Object.keys(stats.best_duration_by_context).length > 0 && (
+              <div className="mt-3 rounded-2xl border border-edge/30 bg-surface px-5 py-4">
+                <BestDurationsByContext data={stats.best_duration_by_context} />
               </div>
             )}
 
@@ -826,6 +854,120 @@ function PeakWindowCard({
           ? "You're in your strongest focus window — good conditions."
           : "Schedule your most important work during this window."}
       </p>
+    </div>
+  );
+}
+
+// ── Fatigue trend card ────────────────────────────────────────────────────────
+
+const W = 120;
+const H = 28;
+const PAD = 2;
+
+function FatigueTrendCard({ data, avg }: { data: number[]; avg: number | null }) {
+  // Lower fatigue = better. Invert to show "freshness" trend going up = good.
+  const inverted = data.map((v) => (6 - v) / 4); // maps 1→1.0, 5→0.0
+
+  const min = Math.min(...inverted);
+  const max = Math.max(...inverted);
+  const range = max - min || 0.01;
+  const xStep = (W - PAD * 2) / Math.max(inverted.length - 1, 1);
+
+  const points = inverted.map((s, i) => {
+    const x = PAD + i * xStep;
+    const y = PAD + (1 - (s - min) / range) * (H - PAD * 2);
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  });
+
+  const first = inverted[0] ?? 0;
+  const last = inverted[inverted.length - 1] ?? 0;
+  const delta = last - first;
+  const color = delta > 0.1 ? "#4ade80" : delta < -0.1 ? "#f87171" : "#6366f1";
+  const trend = delta > 0.1 ? "Improving" : delta < -0.1 ? "Rising" : "Steady";
+
+  return (
+    <div>
+      <div className="flex items-center justify-between">
+        <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-muted/50">
+          Fatigue trend
+        </p>
+        <div className="flex items-center gap-2">
+          {avg !== null && (
+            <span className="text-[10px] tabular-nums text-muted/40">
+              avg {avg.toFixed(1)}/5
+            </span>
+          )}
+          <span className="text-[10px] font-medium" style={{ color, opacity: 0.8 }}>
+            {trend}
+          </span>
+        </div>
+      </div>
+      <div className="mt-2.5">
+        <svg
+          width="100%"
+          height={H}
+          viewBox={`0 0 ${W} ${H}`}
+          preserveAspectRatio="none"
+          className="overflow-visible"
+        >
+          <polyline
+            points={`${PAD},${H - PAD} ${points.join(" ")} ${PAD + (inverted.length - 1) * xStep},${H - PAD}`}
+            fill={color}
+            fillOpacity={0.06}
+            stroke="none"
+          />
+          <polyline
+            points={points.join(" ")}
+            fill="none"
+            stroke={color}
+            strokeWidth={1.5}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeOpacity={0.6}
+          />
+          <circle
+            cx={PAD + (inverted.length - 1) * xStep}
+            cy={(() => {
+              const lastPoint = points[points.length - 1];
+              return lastPoint ? parseFloat(lastPoint.split(",")[1] ?? String(PAD)) : PAD;
+            })()}
+            r={2.5}
+            fill={color}
+            fillOpacity={0.9}
+          />
+        </svg>
+        <p className="mt-1 text-[10px] text-muted/30">
+          Last {data.length} rated sessions · 1 = fresh, 5 = worn out
+        </p>
+      </div>
+    </div>
+  );
+}
+
+// ── Best durations by context ─────────────────────────────────────────────────
+
+function BestDurationsByContext({ data }: { data: Record<string, number> }) {
+  const entries = Object.entries(data).sort(([a], [b]) => a.localeCompare(b));
+
+  return (
+    <div>
+      <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-muted/50">
+        Best duration by type
+      </p>
+      <ul className="mt-3 space-y-2">
+        {entries.map(([type, minutes]) => (
+          <li key={type} className="flex items-center justify-between">
+            <span className="text-[12px] text-muted/50">
+              {SESSION_TYPE_LABELS[type as keyof typeof SESSION_TYPE_LABELS] ?? type}
+            </span>
+            <span className="text-[13px] font-semibold tabular-nums text-fg">
+              {minutes}
+              <span className="text-[10px] font-normal text-muted/40"> min</span>
+            </span>
+          </li>
+        ))}
+      </ul>
+      <p className="mt-2 text-[10px] text-muted/30">Based on stored reward scores</p>
     </div>
   );
 }

@@ -9,7 +9,7 @@ export async function POST(request: NextRequest) {
     return errorResponse("unauthorized", "Not authenticated", 401);
   }
 
-  let body: { session_id: string };
+  let body: { session_id: string; paused_count?: number; abandoned?: boolean };
   try {
     body = await request.json();
   } catch {
@@ -20,6 +20,13 @@ export async function POST(request: NextRequest) {
   if (!session_id || typeof session_id !== "string") {
     return errorResponse("invalid_body", "session_id required", 400);
   }
+
+  const pausedCount: number | null =
+    Number.isInteger(body.paused_count) && (body.paused_count as number) >= 0
+      ? (body.paused_count as number)
+      : null;
+
+  const abandoned: boolean = body.abandoned === true;
 
   const supabase = createAdminClient();
   const now = new Date().toISOString();
@@ -42,13 +49,18 @@ export async function POST(request: NextRequest) {
     return errorResponse("invalid_state", "Session is not active", 400);
   }
 
+  const updatePayload: Record<string, unknown> = { status: "ended", ended_at: now };
+  if (pausedCount !== null) updatePayload.paused_count = pausedCount;
+  if (abandoned) updatePayload.abandoned = true;
+
   const { error: updateError } = await supabase
     .from("sessions")
-    .update({ status: "ended", ended_at: now })
+    .update(updatePayload)
     .eq("id", session_id);
 
   if (updateError) {
-    return errorResponse("db_error", updateError.message, 500);
+    console.error("[sessions/end] Failed to end session:", updateError.message);
+    return errorResponse("db_error", "Failed to end session", 500);
   }
 
   return okResponse({});

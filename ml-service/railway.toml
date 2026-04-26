@@ -1,0 +1,14 @@
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile"
+
+[deploy]
+startCommand = "uvicorn main:app --host 0.0.0.0 --port 8000"
+healthcheckPath = "/health"
+healthcheckTimeout = 300
+restartPolicyType = "ON_FAILURE"
+
+[[crons]]
+name = "weekly-policy-evaluation"
+schedule = "0 3 * * 0"
+command = "python -c \"import httpx, os; httpx.post('http://localhost:8000/evaluate', json={'start_date': 'auto', 'end_date': 'auto'}, headers={'x-admin-api-key': os.environ['ADMIN_API_KEY']})\""

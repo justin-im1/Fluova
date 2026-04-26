@@ -9,6 +9,10 @@ import { computeReward } from "./reward";
 export const FOCUS_ARMS_SEC = [1500, 1800, 2100, 2400, 2700, 3000] as const;
 export type FocusArm = (typeof FOCUS_ARMS_SEC)[number];
 
+/** PRD 4-arm space used by LinUCB (25/35/45/55 min). */
+export const FOCUS_ARMS_SEC_PRD = [1500, 2100, 2700, 3300] as const;
+export type FocusArmPRD = (typeof FOCUS_ARMS_SEC_PRD)[number];
+
 /** Prior mean reward for untried arms (calibrated empirically). */
 export const PRIOR_MEAN = 0.55;
 

@@ -2,6 +2,7 @@
 
 import { useEffect, useState, Suspense } from "react";
 import { useRouter, useParams, useSearchParams } from "next/navigation";
+import ContextSlider from "@/components/ContextSlider";
 import type { Session, BreakOutcome } from "@/lib/domain/types";
 import { SESSION_TYPE_LABELS } from "@/lib/domain/types";
 
@@ -51,6 +52,10 @@ function RecapInner() {
   const [loadingSession, setLoadingSession] = useState(true);
   const [completed, setCompleted] = useState(true);
   const [rating, setRating] = useState<number | null>(null);
+  const [fatigueRating, setFatigueRating] = useState<number | null>(null);
+  const [recommendationFit, setRecommendationFit] = useState<boolean | null>(null);
+  const [note, setNote] = useState("");
+  const [distractionCount, setDistractionCount] = useState<string>("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
@@ -82,6 +87,10 @@ function RecapInner() {
     }
 
     try {
+      const parsedDistractionCount = distractionCount.trim() !== ""
+        ? parseInt(distractionCount, 10)
+        : undefined;
+
       const res = await fetch("/api/focus-blocks/complete", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -93,6 +102,10 @@ function RecapInner() {
           break_outcome: breakOutcome ?? undefined,
           break_duration_sec_actual:
             breakDurationActual !== null ? breakDurationActual : undefined,
+          fatigue_rating: fatigueRating ?? undefined,
+          recommendation_fit: recommendationFit ?? undefined,
+          note: note.trim() || undefined,
+          distraction_count: !isNaN(parsedDistractionCount as number) ? parsedDistractionCount : undefined,
         }),
       });
 
@@ -236,6 +249,83 @@ function RecapInner() {
           <div className="mt-2 flex justify-between text-[11px] text-muted/50">
             <span>Distracted</span>
             <span>Deep flow</span>
+          </div>
+        </div>
+
+        {/* Fatigue rating — soft required */}
+        <div className="rounded-xl border border-edge bg-surface p-4">
+          <ContextSlider
+            label="Fatigue level"
+            hint="1 = fresh · 5 = worn out"
+            value={fatigueRating}
+            onChange={setFatigueRating}
+            disabled={submitting}
+          />
+          {fatigueRating === null && (
+            <p className="mt-2 text-[11px] text-amber-500/70">
+              Fatigue helps improve future recommendations — try to fill this in.
+            </p>
+          )}
+        </div>
+
+        {/* Recommendation fit toggle */}
+        <div className="rounded-xl border border-edge bg-surface p-4">
+          <p className="mb-3 text-[13px] font-medium text-secondary">
+            Recommendation fit
+          </p>
+          <div className="flex gap-2">
+            {[
+              { label: "Good fit", value: true },
+              { label: "Not quite", value: false },
+            ].map(({ label, value }) => (
+              <button
+                key={label}
+                type="button"
+                onClick={() => setRecommendationFit(value)}
+                disabled={submitting}
+                className={`flex-1 rounded-lg px-3 py-2 text-[12px] font-medium transition-all ${
+                  recommendationFit === value
+                    ? "bg-primary text-white"
+                    : "bg-surface-elevated text-muted hover:text-secondary"
+                } ${submitting ? "cursor-not-allowed opacity-50" : ""}`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Optional fields */}
+        <div className="rounded-xl border border-edge bg-surface p-4 space-y-4">
+          <div>
+            <label className="mb-1.5 block text-[13px] font-medium text-secondary">
+              Distraction count
+              <span className="ml-1 text-[11px] font-normal text-muted/40">(optional)</span>
+            </label>
+            <input
+              type="number"
+              min="0"
+              value={distractionCount}
+              onChange={(e) => setDistractionCount(e.target.value)}
+              disabled={submitting}
+              placeholder="0"
+              className="w-full rounded-lg border border-edge bg-surface-elevated px-3 py-2 text-[13px] text-fg placeholder:text-muted/30 focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-50"
+            />
+          </div>
+          <div>
+            <label className="mb-1.5 block text-[13px] font-medium text-secondary">
+              Note
+              <span className="ml-1 text-[11px] font-normal text-muted/40">(optional · 280 chars)</span>
+            </label>
+            <textarea
+              value={note}
+              onChange={(e) => setNote(e.target.value.slice(0, 280))}
+              disabled={submitting}
+              placeholder="Anything worth remembering about this session…"
+              rows={2}
+              className="w-full resize-none rounded-lg border border-edge bg-surface-elevated px-3 py-2 text-[13px] text-fg placeholder:text-muted/30 focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-50"
+            />
+            <p className="mt-1 text-right text-[11px] text-muted/30">{note.length}/280</p>
           </div>
         </div>
 

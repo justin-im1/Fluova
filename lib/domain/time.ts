@@ -1,6 +1,18 @@
 export type TimeBucket = "morning" | "afternoon" | "evening" | "night";
 
 /**
+ * Get time bucket from the browser's local clock.
+ * Use this on the client side; use getTimeBucket() on the server (UTC).
+ */
+export function getLocalTimeBucket(): TimeBucket {
+  const hour = new Date().getHours();
+  if (hour >= 5 && hour < 12) return "morning";
+  if (hour >= 12 && hour < 17) return "afternoon";
+  if (hour >= 17 && hour < 22) return "evening";
+  return "night";
+}
+
+/**
  * Get day of week (0=Sunday, 6=Saturday) from ISO date string.
  */
 export function getDayOfWeek(isoDate: string): number {

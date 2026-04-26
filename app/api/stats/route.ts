@@ -126,11 +126,10 @@ export async function GET() {
 
   const supabase = createAdminClient();
 
-  // Fetch all focus blocks + user's current daily goal in parallel
-  const [blocksResult, prefsResult] = await Promise.all([
+  const [blocksResult, prefsResult, sessionsResult, recEventsResult] = await Promise.all([
     supabase
       .from("focus_blocks")
-      .select("focus_rating, completed, ended_at, time_bucket, focus_duration_sec")
+      .select("focus_rating, completed, ended_at, time_bucket, focus_duration_sec, session_type")
       .eq("user_id", user.id)
       .order("ended_at", { ascending: false }),
     supabase
@@ -138,10 +137,22 @@ export async function GET() {
       .select("daily_session_goal")
       .eq("user_id", user.id)
       .maybeSingle(),
+    supabase
+      .from("sessions")
+      .select("fatigue_rating_post, focus_duration_sec, reward_value, session_type, created_at")
+      .eq("user_id", user.id)
+      .order("created_at", { ascending: false })
+      .limit(50),
+    supabase
+      .from("recommendation_events")
+      .select("accepted")
+      .eq("user_id", user.id)
+      .limit(200),
   ]);
 
   if (blocksResult.error) {
-    return errorResponse("db_error", blocksResult.error.message, 500);
+    console.error("[stats] Failed to fetch blocks:", blocksResult.error.message);
+    return errorResponse("db_error", "Failed to fetch stats", 500);
   }
 
   const list: BlockRow[] = blocksResult.data ?? [];
@@ -218,6 +229,50 @@ export async function GET() {
   // ── Rhythm Score ─────────────────────────────────────────────────────────
   const { score: rhythmScore, delta: rhythmScoreDelta } = computeRhythmScore(list);
 
+  // ── Fatigue trend ─────────────────────────────────────────────────────────
+  const sessionRows = sessionsResult.data ?? [];
+  const fatigueTrendData = sessionRows
+    .filter((s) => s.fatigue_rating_post !== null)
+    .slice(0, 14)
+    .map((s) => s.fatigue_rating_post as number)
+    .reverse(); // oldest→newest for display
+  const fatigueTrendAvg =
+    fatigueTrendData.length > 0
+      ? Math.round((fatigueTrendData.reduce((s, v) => s + v, 0) / fatigueTrendData.length) * 10) / 10
+      : null;
+
+  // ── Recommendation acceptance rate ─────────────────────────────────────────
+  const recEventsRows = recEventsResult.data ?? [];
+  const recEventsTotal = recEventsRows.length;
+  const recEventsAccepted = recEventsRows.filter((e) => e.accepted === true).length;
+  const recommendationAcceptanceRate =
+    recEventsTotal >= 3 ? Math.round((recEventsAccepted / recEventsTotal) * 100) / 100 : null;
+
+  // ── Best duration by session type ─────────────────────────────────────────
+  type DurAcc = Record<number, { sum: number; count: number }>;
+  const contextMap: Record<string, DurAcc> = {};
+  for (const s of sessionRows) {
+    if (!s.session_type || s.reward_value === null) continue;
+    const type = s.session_type as string;
+    const min = Math.round(s.focus_duration_sec / 60);
+    if (!contextMap[type]) contextMap[type] = {};
+    if (!contextMap[type]![min]) contextMap[type]![min] = { sum: 0, count: 0 };
+    contextMap[type]![min]!.sum += s.reward_value as number;
+    contextMap[type]![min]!.count++;
+  }
+  const bestDurationByContext: Record<string, number> = {};
+  for (const [type, durMap] of Object.entries(contextMap)) {
+    const total = Object.values(durMap).reduce((s, v) => s + v.count, 0);
+    if (total < 3) continue;
+    let bestMin = 0;
+    let bestScore = -1;
+    for (const [min, { sum, count }] of Object.entries(durMap)) {
+      const score = sum / count;
+      if (score > bestScore) { bestScore = score; bestMin = Number(min); }
+    }
+    bestDurationByContext[type] = bestMin;
+  }
+
   // ── Weekly Summary (Feature 13) ───────────────────────────────────────────
   const now = Date.now();
   const weekStart = new Date(now - 7 * 86_400_000).toISOString();
@@ -253,5 +308,12 @@ export async function GET() {
     // Rhythm Score
     rhythm_score: rhythmScore,
     rhythm_score_delta: rhythmScoreDelta,
+    // Fatigue trend
+    fatigue_trend_data: fatigueTrendData,
+    fatigue_trend_avg: fatigueTrendAvg,
+    // Recommendation acceptance
+    recommendation_acceptance_rate: recommendationAcceptanceRate,
+    // Best duration per session type
+    best_duration_by_context: bestDurationByContext,
   });
 }

@@ -37,6 +37,20 @@ export type Session = {
   ended_at: string | null;
   session_type?: SessionType | null;
   created_at?: string;
+  // PRD Phase 1 fields — all optional so existing code compiles unchanged
+  energy_level_pre?: number | null;
+  distraction_level_pre?: number | null;
+  fatigue_rating_post?: number | null;
+  actual_focus_minutes?: number | null;
+  paused_count?: number;
+  abandoned?: boolean;
+  completion_fraction?: number | null;
+  reward_value?: number | null;
+  reward_version?: string | null;
+  note?: string | null;
+  distraction_count_post?: number | null;
+  recommendation_fit?: boolean | null;
+  recommendation_event_id?: string | null;
 };
 
 export type BreakOutcome = "completed" | "skipped" | "shortened";
@@ -81,6 +95,91 @@ export type PlanBlock = {
  */
 export type FatigueState = "recovered" | "stable" | "fatigued" | "reset";
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Explanation payload — logged in recommendation_events and returned to the UI
+// ─────────────────────────────────────────────────────────────────────────────
+
+export type ExplanationSignals = {
+  time_of_day: string | null;
+  fatigue: string | null;
+  completion_trend: string | null;
+  arm_stability: string | null;
+  sessions_today: string | null;
+};
+
+export type ExplanationPayload = {
+  version: "v1";
+  rationale: string;
+  signals: ExplanationSignals;
+  confidence_level: ConfidenceLevel;
+  confidence_reason: string;
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Alternate session option — shown alongside the primary recommendation
+// ─────────────────────────────────────────────────────────────────────────────
+
+export type AlternateOption = {
+  focus_minutes: number;
+  break_minutes: number;
+  mode: string;
+  label: string;
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Recommendation event — one row per recommendation shown to the user
+// ─────────────────────────────────────────────────────────────────────────────
+
+export type RecommendationEvent = {
+  id: string;
+  user_id: string;
+  shown_at: string;
+  recommended_focus_minutes: number;
+  recommended_break_minutes: number;
+  session_mode: string | null;
+  accepted: boolean | null;
+  overridden: boolean;
+  override_focus_minutes: number | null;
+  policy_version: string;
+  policy_type: string;
+  model_version: string | null;
+  propensity: number | null;
+  exploration_flag: boolean;
+  explanation_payload: ExplanationPayload | null;
+  context_snapshot: Record<string, unknown>;
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Model version — tracks ML artifacts and training metadata
+// ─────────────────────────────────────────────────────────────────────────────
+
+export type ModelVersion = {
+  id: string;
+  type: string;
+  created_at: string;
+  feature_schema_version: string | null;
+  training_window: Record<string, unknown> | null;
+  reward_version: string | null;
+  metrics_payload: Record<string, unknown> | null;
+  artifact_uri: string | null;
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Policy evaluation — stores offline IPS/SNIPS/DR evaluation results
+// ─────────────────────────────────────────────────────────────────────────────
+
+export type PolicyEvaluation = {
+  id: string;
+  created_at: string;
+  candidate_policy_version: string;
+  logged_policy_version: string;
+  evaluation_window: Record<string, unknown> | null;
+  method: "ips" | "snips" | "dr";
+  estimated_policy_value: number | null;
+  confidence_interval: { low: number; high: number } | null;
+  notes: string | null;
+};
+
 export type Recommendation = {
   recommended_focus_duration_sec: number;
   recommended_break_duration_sec: number;
@@ -115,4 +214,10 @@ export type Recommendation = {
    * Only present when block_count ≥ 4.
    */
   next_plan?: PlanBlock[];
+  /** ID of the logged recommendation_event row — passed back to sessions/start. */
+  recommendation_event_id?: string | null;
+  /** Full explanation payload generated server-side for UI rendering. */
+  explanation_payload?: ExplanationPayload | null;
+  /** Two alternate session configurations (next shorter + next longer arm). */
+  alternate_options?: AlternateOption[];
 };

@@ -26,6 +26,16 @@ export default function SessionPage() {
   const [breakStartedAt, setBreakStartedAt] = useState<Date | null>(null);
   const [ending, setEnding] = useState(false);
 
+  // Pause state
+  const [isPaused, setIsPaused] = useState(false);
+  const pausedAtRef = useRef<number | null>(null);
+  const pausedOffsetRef = useRef(0);
+  const pausedCountRef = useRef(0);
+  const [pausedOffsetDisplay, setPausedOffsetDisplay] = useState(0);
+
+  // Elapsed seconds when the user paused (for abandon logic)
+  const [elapsedAtPause, setElapsedAtPause] = useState(0);
+
   // Guard: only end the session once even if onComplete and handleEnd race.
   const sessionEndedRef = useRef(false);
 
@@ -43,6 +53,25 @@ export default function SessionPage() {
       .finally(() => setLoading(false));
   }, [sessionId]);
 
+  function handlePause() {
+    if (!session || isPaused) return;
+    const start = new Date(session.started_at).getTime();
+    const elapsedSec = Math.floor((Date.now() - start) / 1000) - pausedOffsetRef.current;
+    setElapsedAtPause(elapsedSec);
+    pausedAtRef.current = Date.now();
+    pausedCountRef.current += 1;
+    setIsPaused(true);
+  }
+
+  function handleResume() {
+    if (!isPaused || pausedAtRef.current === null) return;
+    const pausedDuration = Math.floor((Date.now() - pausedAtRef.current) / 1000);
+    pausedOffsetRef.current += pausedDuration;
+    setPausedOffsetDisplay(pausedOffsetRef.current);
+    pausedAtRef.current = null;
+    setIsPaused(false);
+  }
+
   /** End the focus session server-side, then transition to the break screen. */
   async function transitionToBreak() {
     if (sessionEndedRef.current) return;
@@ -53,7 +82,10 @@ export default function SessionPage() {
       await fetch("/api/sessions/end", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ session_id: sessionId }),
+        body: JSON.stringify({
+          session_id: sessionId,
+          paused_count: pausedCountRef.current,
+        }),
       });
     } catch {
       // Non-fatal: break screen still shown even on network hiccup.
@@ -62,6 +94,28 @@ export default function SessionPage() {
     setBreakStartedAt(new Date());
     setPhase("break");
     setEnding(false);
+  }
+
+  async function handleAbandon() {
+    if (sessionEndedRef.current) return;
+    sessionEndedRef.current = true;
+    setEnding(true);
+
+    try {
+      await fetch("/api/sessions/end", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          session_id: sessionId,
+          paused_count: pausedCountRef.current,
+          abandoned: true,
+        }),
+      });
+    } catch {
+      // Non-fatal.
+    }
+
+    router.push(`/session/${sessionId}/recap?abandoned=true`);
   }
 
   /** Navigate to recap after break completes naturally. */
@@ -80,6 +134,17 @@ export default function SessionPage() {
       `/session/${sessionId}/recap?break_outcome=${outcome}&break_duration=${actualDuration}`
     );
   }
+
+  // Show abandon button once the user has paused or 5 minutes have elapsed.
+  const showAbandon =
+    isPaused ||
+    (session !== null &&
+      elapsedAtPause === 0 &&
+      Math.floor(
+        (Date.now() - new Date(session.started_at).getTime()) / 1000
+      ) -
+        pausedOffsetDisplay >=
+        300);
 
   if (loading) {
     return (
@@ -122,12 +187,14 @@ export default function SessionPage() {
     <div className="flex min-h-[70vh] flex-col items-center justify-center animate-fade-in">
       <div className="flex flex-col items-center space-y-10">
         <p className="text-[11px] font-semibold uppercase tracking-[0.15em] text-muted/50">
-          Focus
+          {isPaused ? "Paused" : "Focus"}
         </p>
 
         <SessionTimer
           focusDurationSec={session.focus_duration_sec}
           startedAt={session.started_at}
+          pausedOffset={pausedOffsetDisplay}
+          isPaused={isPaused}
           onComplete={transitionToBreak}
         />
 
@@ -135,13 +202,43 @@ export default function SessionPage() {
           {session.focus_duration_sec / 60} min session
         </p>
 
-        <button
-          onClick={transitionToBreak}
-          disabled={ending}
-          className="rounded-lg px-5 py-2 text-[13px] font-medium text-muted/40 transition-colors duration-150 hover:text-muted disabled:opacity-50"
-        >
-          End early
-        </button>
+        <div className="flex flex-col items-center gap-3">
+          {isPaused ? (
+            <button
+              onClick={handleResume}
+              disabled={ending}
+              className="rounded-lg px-5 py-2 text-[13px] font-medium text-primary/70 transition-colors duration-150 hover:text-primary disabled:opacity-50"
+            >
+              Resume
+            </button>
+          ) : (
+            <button
+              onClick={handlePause}
+              disabled={ending}
+              className="rounded-lg px-5 py-2 text-[13px] font-medium text-muted/40 transition-colors duration-150 hover:text-muted disabled:opacity-50"
+            >
+              Pause
+            </button>
+          )}
+
+          <button
+            onClick={transitionToBreak}
+            disabled={ending}
+            className="rounded-lg px-5 py-2 text-[13px] font-medium text-muted/30 transition-colors duration-150 hover:text-muted/60 disabled:opacity-50"
+          >
+            End early
+          </button>
+
+          {(showAbandon || isPaused) && (
+            <button
+              onClick={handleAbandon}
+              disabled={ending}
+              className="rounded-lg px-5 py-2 text-[13px] font-medium text-red-500/40 transition-colors duration-150 hover:text-red-400/70 disabled:opacity-50"
+            >
+              Abandon session
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );
