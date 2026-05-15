@@ -25,7 +25,6 @@ export default function SessionTimer({
 }: Props) {
   const [remainingSec, setRemainingSec] = useState<number | null>(null);
   const completeFired = useRef(false);
-  // Keep a stable ref so the interval never re-creates due to parent re-renders.
   const onCompleteRef = useRef(onComplete);
   useEffect(() => { onCompleteRef.current = onComplete; });
 
@@ -61,7 +60,7 @@ export default function SessionTimer({
 
   if (remainingSec === null) {
     return (
-      <div className="text-6xl font-mono font-semibold tabular-nums text-edge sm:text-7xl">
+      <div className="font-mono text-[80px] font-light tabular-nums leading-none text-edge sm:text-[100px]">
         --:--
       </div>
     );
@@ -71,8 +70,12 @@ export default function SessionTimer({
 
   return (
     <div
-      className={`text-6xl font-mono font-semibold tabular-nums transition-colors duration-300 sm:text-7xl ${
-        isComplete ? "text-emerald-400/90" : isPaused ? "text-muted/50" : "text-fg"
+      className={`font-mono text-[80px] font-light tabular-nums leading-none transition-colors duration-500 sm:text-[100px] ${
+        isComplete
+          ? "text-emerald-400/90"
+          : isPaused
+          ? "text-muted/40"
+          : "text-fg"
       }`}
     >
       {formatTime(remainingSec)}

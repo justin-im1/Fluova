@@ -6,7 +6,6 @@ import ContextSlider from "@/components/ContextSlider";
 import type { Session, BreakOutcome } from "@/lib/domain/types";
 import { SESSION_TYPE_LABELS } from "@/lib/domain/types";
 
-/** Compute the user's local time-of-day bucket using the browser clock. */
 function getLocalTimeBucket(): "morning" | "afternoon" | "evening" | "night" {
   const hour = new Date().getHours();
   if (hour >= 5 && hour < 12) return "morning";
@@ -33,7 +32,7 @@ function elapsedSeconds(startedAt: string, endedAt: string): number {
 const BREAK_OUTCOME_LABELS: Record<BreakOutcome, string> = {
   completed: "Completed",
   shortened: "Shortened",
-  skipped: "Skipped",
+  skipped:   "Skipped",
 };
 
 function RecapInner() {
@@ -42,7 +41,6 @@ function RecapInner() {
   const searchParams = useSearchParams();
   const sessionId = params.sessionId as string;
 
-  // Break outcome passed from session page via URL params
   const breakOutcome = searchParams.get("break_outcome") as BreakOutcome | null;
   const breakDurationActual = searchParams.get("break_duration")
     ? parseInt(searchParams.get("break_duration")!, 10)
@@ -65,9 +63,7 @@ function RecapInner() {
       .then((res) => res.json())
       .then((data) => {
         if (data.ok && data.data?.sessions) {
-          const found = data.data.sessions.find(
-            (s: Session) => s.id === sessionId
-          );
+          const found = data.data.sessions.find((s: Session) => s.id === sessionId);
           if (found) setSession(found);
         }
       })
@@ -131,12 +127,12 @@ function RecapInner() {
       : null;
 
   return (
-    <div className="mx-auto max-w-sm space-y-6 pt-4">
+    <div className="mx-auto max-w-sm space-y-5 pt-4 animate-fade-in">
 
       {/* Session summary */}
       {!loadingSession && session && (
         <div className="rounded-2xl border border-edge/40 bg-surface px-5 py-4">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.1em] text-muted/50">
+          <p className="font-display text-[11px] font-semibold uppercase tracking-[0.1em] text-muted/45">
             Session summary
           </p>
           <div className="mt-3 space-y-2">
@@ -182,25 +178,25 @@ function RecapInner() {
       )}
 
       <div>
-        <h1 className="text-lg font-semibold text-fg">How did it go?</h1>
-        <p className="mt-0.5 text-[13px] text-muted/60">
+        <h1 className="font-display text-[20px] font-bold text-fg">How did it go?</h1>
+        <p className="mt-1 text-[13px] text-muted/50">
           Your feedback shapes the next recommendation.
         </p>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-4">
         {/* Completion toggle */}
-        <div className="rounded-xl border border-edge bg-surface p-4">
+        <div className="rounded-2xl border border-edge/40 bg-surface p-4">
           <button
             type="button"
             onClick={() => setCompleted(!completed)}
             className="flex w-full items-center gap-3"
           >
             <div
-              className={`flex h-5 w-5 flex-shrink-0 items-center justify-center rounded border-2 transition-colors ${
+              className={`flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-md border-2 transition-all duration-150 ${
                 completed
-                  ? "border-primary bg-primary"
-                  : "border-edge bg-surface-elevated"
+                  ? "border-primary/70 bg-primary"
+                  : "border-edge/60 bg-surface-elevated"
               }`}
             >
               {completed && (
@@ -215,18 +211,18 @@ function RecapInner() {
                 </svg>
               )}
             </div>
-            <span className="text-[13px] font-medium text-secondary">
+            <span className="text-[13px] font-medium text-secondary/80">
               I completed this focus block
             </span>
           </button>
         </div>
 
         {/* Rating selector */}
-        <div className="rounded-xl border border-edge bg-surface p-4">
+        <div className="rounded-2xl border border-edge/40 bg-surface p-4">
           <div className="mb-3 flex items-baseline justify-between">
-            <p className="text-[13px] font-medium text-secondary">Focus quality</p>
+            <p className="text-[13px] font-medium text-secondary/80">Focus quality</p>
             {rating === null && (
-              <p className="text-[11px] text-muted/40">Select how focused you felt</p>
+              <p className="text-[11px] text-muted/35">Select how focused you felt</p>
             )}
           </div>
           <div className="flex gap-2">
@@ -236,24 +232,24 @@ function RecapInner() {
                 type="button"
                 onClick={() => setRating(n)}
                 disabled={submitting}
-                className={`flex h-11 w-11 items-center justify-center rounded-lg text-[15px] font-semibold transition-all ${
+                className={`flex h-11 w-11 items-center justify-center rounded-xl text-[15px] font-semibold transition-all duration-150 ${
                   rating === n
-                    ? "bg-primary text-white"
-                    : "bg-surface-elevated text-muted hover:text-secondary"
-                } ${submitting ? "cursor-not-allowed opacity-50" : ""}`}
+                    ? "btn-primary"
+                    : "bg-surface-elevated text-muted/55 hover:text-secondary"
+                } ${submitting ? "cursor-not-allowed opacity-40" : ""}`}
               >
                 {n}
               </button>
             ))}
           </div>
-          <div className="mt-2 flex justify-between text-[11px] text-muted/50">
+          <div className="mt-2 flex justify-between text-[11px] text-muted/40">
             <span>Distracted</span>
             <span>Deep flow</span>
           </div>
         </div>
 
-        {/* Fatigue rating — soft required */}
-        <div className="rounded-xl border border-edge bg-surface p-4">
+        {/* Fatigue rating */}
+        <div className="rounded-2xl border border-edge/40 bg-surface p-4">
           <ContextSlider
             label="Fatigue level"
             hint="1 = fresh · 5 = worn out"
@@ -262,15 +258,15 @@ function RecapInner() {
             disabled={submitting}
           />
           {fatigueRating === null && (
-            <p className="mt-2 text-[11px] text-amber-500/70">
+            <p className="mt-2 text-[11px] text-amber-500/60">
               Fatigue helps improve future recommendations — try to fill this in.
             </p>
           )}
         </div>
 
-        {/* Recommendation fit toggle */}
-        <div className="rounded-xl border border-edge bg-surface p-4">
-          <p className="mb-3 text-[13px] font-medium text-secondary">
+        {/* Recommendation fit */}
+        <div className="rounded-2xl border border-edge/40 bg-surface p-4">
+          <p className="mb-3 text-[13px] font-medium text-secondary/80">
             Recommendation fit
           </p>
           <div className="flex gap-2">
@@ -283,11 +279,11 @@ function RecapInner() {
                 type="button"
                 onClick={() => setRecommendationFit(value)}
                 disabled={submitting}
-                className={`flex-1 rounded-lg px-3 py-2 text-[12px] font-medium transition-all ${
+                className={`flex-1 rounded-xl px-3 py-2.5 text-[12px] font-medium transition-all duration-150 ${
                   recommendationFit === value
-                    ? "bg-primary text-white"
-                    : "bg-surface-elevated text-muted hover:text-secondary"
-                } ${submitting ? "cursor-not-allowed opacity-50" : ""}`}
+                    ? "btn-primary"
+                    : "bg-surface-elevated text-muted/55 hover:text-secondary"
+                } ${submitting ? "cursor-not-allowed opacity-40" : ""}`}
               >
                 {label}
               </button>
@@ -296,11 +292,11 @@ function RecapInner() {
         </div>
 
         {/* Optional fields */}
-        <div className="rounded-xl border border-edge bg-surface p-4 space-y-4">
+        <div className="rounded-2xl border border-edge/40 bg-surface p-4 space-y-4">
           <div>
-            <label className="mb-1.5 block text-[13px] font-medium text-secondary">
+            <label className="mb-1.5 block text-[13px] font-medium text-secondary/80">
               Distraction count
-              <span className="ml-1 text-[11px] font-normal text-muted/40">(optional)</span>
+              <span className="ml-1 text-[11px] font-normal text-muted/35">(optional)</span>
             </label>
             <input
               type="number"
@@ -309,13 +305,13 @@ function RecapInner() {
               onChange={(e) => setDistractionCount(e.target.value)}
               disabled={submitting}
               placeholder="0"
-              className="w-full rounded-lg border border-edge bg-surface-elevated px-3 py-2 text-[13px] text-fg placeholder:text-muted/30 focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-50"
+              className="w-full rounded-xl border border-edge/40 bg-surface-elevated px-3 py-2.5 text-[13px] text-fg placeholder:text-muted/25 focus:border-primary/40 focus:outline-none focus:ring-1 focus:ring-primary/20 disabled:opacity-40"
             />
           </div>
           <div>
-            <label className="mb-1.5 block text-[13px] font-medium text-secondary">
+            <label className="mb-1.5 block text-[13px] font-medium text-secondary/80">
               Note
-              <span className="ml-1 text-[11px] font-normal text-muted/40">(optional · 280 chars)</span>
+              <span className="ml-1 text-[11px] font-normal text-muted/35">(optional · 280 chars)</span>
             </label>
             <textarea
               value={note}
@@ -323,14 +319,14 @@ function RecapInner() {
               disabled={submitting}
               placeholder="Anything worth remembering about this session…"
               rows={2}
-              className="w-full resize-none rounded-lg border border-edge bg-surface-elevated px-3 py-2 text-[13px] text-fg placeholder:text-muted/30 focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-50"
+              className="w-full resize-none rounded-xl border border-edge/40 bg-surface-elevated px-3 py-2.5 text-[13px] text-fg placeholder:text-muted/25 focus:border-primary/40 focus:outline-none focus:ring-1 focus:ring-primary/20 disabled:opacity-40"
             />
-            <p className="mt-1 text-right text-[11px] text-muted/30">{note.length}/280</p>
+            <p className="mt-1 text-right text-[11px] text-muted/25">{note.length}/280</p>
           </div>
         </div>
 
         {error && (
-          <div className="rounded-xl border border-red-900/40 bg-red-950/30 px-4 py-3 text-[13px] text-red-400">
+          <div className="rounded-2xl border border-red-900/35 bg-red-950/25 px-4 py-3 text-[13px] text-red-400/90">
             {error}
           </div>
         )}
@@ -338,7 +334,7 @@ function RecapInner() {
         <button
           type="submit"
           disabled={submitting || saved || rating === null}
-          className="w-full rounded-lg bg-primary px-4 py-2.5 text-[13px] font-medium text-white transition-colors hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-40"
+          className="btn-primary w-full rounded-xl px-4 py-3 text-[13px] font-semibold disabled:cursor-not-allowed"
         >
           {submitting ? "Saving…" : saved ? "Saved" : "Save & update recommendation"}
         </button>
@@ -366,10 +362,10 @@ function SummaryRow({
 }) {
   return (
     <div className="flex items-baseline justify-between">
-      <p className="text-[12px] text-muted/50">{label}</p>
+      <p className="text-[12px] text-muted/45">{label}</p>
       <div className="text-right">
         <p className="text-[13px] font-medium text-fg">{value}</p>
-        {sub && <p className="text-[11px] text-muted/40">{sub}</p>}
+        {sub && <p className="text-[11px] text-muted/35">{sub}</p>}
       </div>
     </div>
   );

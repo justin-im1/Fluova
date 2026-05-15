@@ -20,9 +20,9 @@ type Props = {
 export default function SessionTypePicker({ value, onChange }: Props) {
   return (
     <div>
-      <p className="mb-2.5 text-[12px] font-medium text-muted/50">
+      <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.1em] text-muted/40">
         Session type{" "}
-        <span className="text-muted/30 font-normal">— optional</span>
+        <span className="font-normal normal-case tracking-normal text-muted/30">— optional</span>
       </p>
       <div className="flex flex-wrap gap-2">
         {TYPES.map(({ key, label }) => (
@@ -30,10 +30,10 @@ export default function SessionTypePicker({ value, onChange }: Props) {
             key={key}
             type="button"
             onClick={() => onChange(value === key ? null : key)}
-            className={`rounded-full px-3.5 py-1.5 text-[12px] font-medium transition-all duration-150 ${
+            className={`rounded-xl px-4 py-2 text-[12px] font-medium transition-all duration-150 ${
               value === key
-                ? "bg-primary text-white"
-                : "border border-edge/40 bg-surface text-muted/60 hover:border-edge/70 hover:text-secondary"
+                ? "btn-primary"
+                : "border border-edge/50 bg-surface text-muted/60 hover:border-edge/80 hover:text-secondary"
             }`}
           >
             {label}

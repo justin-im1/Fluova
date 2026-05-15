@@ -216,7 +216,7 @@ export async function POST(request: NextRequest) {
   }
 
   // Write feedback + reward fields to sessions in one update.
-  await supabase
+  const { error: sessionUpdateError } = await supabase
     .from("sessions")
     .update({
       reward_value: rewardValue,
@@ -230,6 +230,11 @@ export async function POST(request: NextRequest) {
     })
     .eq("id", session_id)
     .eq("user_id", user.id);
+
+  if (sessionUpdateError) {
+    console.error("[focus-blocks/complete] Failed to save session feedback:", sessionUpdateError.message);
+    return errorResponse("db_error", "Failed to save session feedback", 500);
+  }
 
   // Fetch current prefs BEFORE computing the new recommendation so we can
   // diff old vs new and generate a change explanation.

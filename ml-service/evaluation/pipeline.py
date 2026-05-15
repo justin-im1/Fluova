@@ -32,6 +32,7 @@ def run_policy_evaluation(
         .select("id, user_id, recommended_focus_minutes, propensity, exploration_flag, context_snapshot, policy_version, policy_type")
         .gte("shown_at", start_date)
         .lte("shown_at", end_date)
+        .eq("policy_type", "linucb")
         .not_is("propensity", "null")
         .execute()
     )

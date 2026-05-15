@@ -46,7 +46,7 @@ def train_reward_predictor(
     # Load sessions with reward and context
     result = (
         supabase.table("sessions")
-        .select("id, reward_value, reward_version, focus_duration_sec, session_type, recommendation_event_id")
+        .select("id, reward_value, reward_version, focus_duration_sec, break_duration_sec, session_type, recommendation_event_id")
         .not_is("reward_value", "null")
         .eq("reward_version", reward_version)
         .gte("started_at", start_date)
@@ -76,7 +76,7 @@ def train_reward_predictor(
             continue
         ctx = rec["context_snapshot"]
         focus_min = round(s["focus_duration_sec"] / 60)
-        break_min = 5
+        break_min = round(s.get("break_duration_sec", 300) / 60)
         mode = rec.get("session_mode") or "standard"
         x = build_xgb_features(ctx, focus_min, break_min, mode)
         rows.append((x, float(s["reward_value"])))

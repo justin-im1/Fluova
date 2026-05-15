@@ -56,7 +56,8 @@ export async function POST(request: NextRequest) {
   const { error: updateError } = await supabase
     .from("sessions")
     .update(updatePayload)
-    .eq("id", session_id);
+    .eq("id", session_id)
+    .eq("user_id", user.id);
 
   if (updateError) {
     console.error("[sessions/end] Failed to end session:", updateError.message);

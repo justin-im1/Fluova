@@ -23,11 +23,13 @@ export async function GET(request: NextRequest) {
       .from("sessions")
       .select("focus_duration_sec, reward_value, session_type, started_at, ended_at")
       .not("reward_value", "is", null)
-      .gte("started_at", thirtyDaysAgo),
+      .gte("started_at", thirtyDaysAgo)
+      .limit(500),
     supabase
       .from("recommendation_events")
       .select("overridden, exploration_flag, accepted")
-      .gte("shown_at", thirtyDaysAgo),
+      .gte("shown_at", thirtyDaysAgo)
+      .limit(500),
     supabase
       .from("policy_evaluations")
       .select("estimated_policy_value")
@@ -37,7 +39,8 @@ export async function GET(request: NextRequest) {
     supabase
       .from("focus_blocks")
       .select("focus_rating, completed, focus_duration_sec, time_bucket, session_type, ended_at")
-      .gte("ended_at", thirtyDaysAgo),
+      .gte("ended_at", thirtyDaysAgo)
+      .limit(500),
   ]);
 
   const sessions = sessionsResult.data ?? [];

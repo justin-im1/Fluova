@@ -1,7 +1,7 @@
 "use client";
 
 type Props = {
-  scores: number[]; // oldest → newest, values 0..1
+  scores: number[];
 };
 
 const W = 120;
@@ -25,19 +25,18 @@ export default function TrendSparkline({ scores }: Props) {
 
   const polyline = points.join(" ");
 
-  // Determine trend direction
   const first = scores[0]!;
   const last = scores[scores.length - 1]!;
   const delta = last - first;
   const trendColor =
-    delta > 0.05 ? "#4ade80" : delta < -0.05 ? "#f87171" : "#6366f1";
+    delta > 0.05 ? "#34D399" : delta < -0.05 ? "#f87171" : "#7C6EF5";
   const trendLabel =
     delta > 0.05 ? "Improving" : delta < -0.05 ? "Declining" : "Steady";
 
   return (
     <div>
       <div className="flex items-center justify-between">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.1em] text-muted/50">
+        <p className="font-display text-[11px] font-semibold uppercase tracking-[0.1em] text-muted/50">
           Performance trend
         </p>
         <p
@@ -61,7 +60,7 @@ export default function TrendSparkline({ scores }: Props) {
             y1={H - PAD}
             x2={W - PAD}
             y2={H - PAD}
-            stroke="#262630"
+            stroke="#1E1E38"
             strokeWidth={0.5}
             strokeOpacity={0.6}
           />

@@ -4,6 +4,8 @@ import os
 from contextlib import asynccontextmanager
 from typing import Any
 
+import numpy as np
+
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
@@ -18,7 +20,7 @@ from bandit.exploration import (
 )
 from bandit.linucb import DisjointLinUCB
 from models.reward_predictor import RewardPredictor
-from storage.model_store import load_bandit, save_bandit, should_save
+from storage.model_store import load_bandit, save_bandit_dict, should_save
 
 logger = logging.getLogger("fluova.ml")
 logging.basicConfig(level=logging.INFO)
@@ -27,6 +29,7 @@ LINUCB_ALPHA        = float(os.getenv("LINUCB_ALPHA", "1.0"))
 LINUCB_COLD_ALPHA   = float(os.getenv("LINUCB_COLD_START_ALPHA", "2.0"))
 COLD_START_THRESHOLD = int(os.getenv("LINUCB_COLD_START_THRESHOLD", "10"))
 ADMIN_API_KEY       = os.getenv("ADMIN_API_KEY", "")
+EXPOSE_THETA        = os.getenv("EXPOSE_THETA", "false").lower() == "true"
 
 
 # ── App state ──────────────────────────────────────────────────────────────────
@@ -102,18 +105,34 @@ async def health():
 
 
 @app.post("/recommend")
-async def recommend(req: RecommendRequest):
+async def recommend(req: RecommendRequest, request: Request):
+    _require_admin(request)
     ctx = req.context_snapshot
     session_count = req.session_count
     is_cold = session_count < COLD_START_THRESHOLD
 
+    x = context_to_vector(ctx)
+
+    # Snapshot matrices under lock so UCB computation runs outside the lock.
+    # This prevents /update from being blocked during matrix inversions.
     async with state.lock:
-        # Adjust alpha for cold-start users
         effective_alpha = cold_start_alpha(LINUCB_ALPHA, session_count, COLD_START_THRESHOLD)
         state.bandit.alpha = effective_alpha if is_cold else LINUCB_ALPHA
+        arms_snap = {
+            a: (state.bandit.A[a].copy(), state.bandit.b[a].copy())
+            for a in state.bandit.arm_ids
+        }
+        alpha_snap = state.bandit.alpha
 
-        x = context_to_vector(ctx)
-        ucb_scores = state.bandit.score(x)
+    # Compute UCB scores from snapshot — no lock held during matrix inversions
+    ucb_scores: dict[str, float] = {}
+    for arm, (A, b) in arms_snap.items():
+        try:
+            A_inv = np.linalg.inv(A)
+        except np.linalg.LinAlgError:
+            A_inv = np.linalg.inv(A + np.eye(A.shape[0]) * 1e-6)
+        theta = A_inv @ b
+        ucb_scores[arm] = float(theta @ x + alpha_snap * np.sqrt(x @ A_inv @ x))
 
     eligible_arms, epsilon = apply_safe_exploration(
         ucb_scores,
@@ -127,10 +146,9 @@ async def recommend(req: RecommendRequest):
         propensity = 1.0 / len(eligible_arms) if eligible_arms else 1.0
         exploration_flag = False
     else:
-        async with state.lock:
-            arm_id, ucb_scores, propensity, exploration_flag = state.bandit.select(
-                x, eligible_arms=eligible_arms, epsilon=epsilon
-            )
+        arm_id, propensity, exploration_flag = DisjointLinUCB.select_from_scores(
+            ucb_scores, eligible_arms=eligible_arms, epsilon=epsilon
+        )
 
     arm = ARM_MAP[arm_id]
 
@@ -155,7 +173,8 @@ async def recommend(req: RecommendRequest):
 
 
 @app.post("/update")
-async def update(req: UpdateRequest):
+async def update(req: UpdateRequest, request: Request):
+    _require_admin(request)
     if req.arm_id not in ARM_IDS:
         raise HTTPException(status_code=400, detail=f"Unknown arm_id: {req.arm_id}")
     if not (0.0 <= req.reward <= 1.0):
@@ -166,9 +185,10 @@ async def update(req: UpdateRequest):
     async with state.lock:
         state.bandit.update(req.arm_id, x, req.reward)
         do_save = should_save(state.bandit)
+        snapshot = state.bandit.to_dict() if do_save else None
 
-    if do_save:
-        asyncio.get_event_loop().run_in_executor(None, save_bandit, state.bandit)
+    if snapshot:
+        asyncio.get_running_loop().run_in_executor(None, save_bandit_dict, snapshot)
 
     return {"success": True, "update_count": state.bandit.update_count}
 
@@ -177,7 +197,7 @@ async def update(req: UpdateRequest):
 async def evaluate(req: EvaluateRequest, request: Request):
     _require_admin(request)
     from evaluation.pipeline import run_policy_evaluation
-    result = await asyncio.get_event_loop().run_in_executor(
+    result = await asyncio.get_running_loop().run_in_executor(
         None,
         lambda: run_policy_evaluation(
             start_date=req.start_date,
@@ -192,7 +212,7 @@ async def evaluate(req: EvaluateRequest, request: Request):
 async def train(req: TrainRequest, request: Request):
     _require_admin(request)
     from models.trainer import train_reward_predictor
-    result = await asyncio.get_event_loop().run_in_executor(
+    result = await asyncio.get_running_loop().run_in_executor(
         None,
         lambda: train_reward_predictor(
             start_date=req.start_date,
@@ -212,16 +232,33 @@ async def diagnostics(request: Request):
     async with state.lock:
         bandit_dict = state.bandit.to_dict()
 
-    action_counts = {
-        arm_id: int(round(bandit_dict["A"][arm_id][0][0] - 1))  # A = eye + outer products
-        for arm_id in bandit_dict["arm_ids"]
+    d = bandit_dict["d"]
+    theta_by_arm = {
+        arm: (np.linalg.inv(np.array(bandit_dict["A"][arm])) @ np.array(bandit_dict["b"][arm])).tolist()
+        for arm in bandit_dict["arm_ids"]
     }
 
-    return {
+    # A[i] = I + sum of outer products; trace - d gives total squared-feature mass, not raw counts.
+    # Use update_count (tracked explicitly) as the authoritative total, and approximate
+    # per-arm share via the trace of (A - I).
+    total_updates = bandit_dict["update_count"]
+    trace_by_arm = {
+        arm: float(np.trace(np.array(bandit_dict["A"][arm])) - d)
+        for arm in bandit_dict["arm_ids"]
+    }
+    total_trace = sum(trace_by_arm.values()) or 1.0
+    action_counts = {
+        arm: round(total_updates * trace_by_arm[arm] / total_trace)
+        for arm in bandit_dict["arm_ids"]
+    }
+
+    response: dict = {
         "action_counts": action_counts,
-        "avg_ucb_by_arm": {arm: round(bandit_dict["b"][arm][0], 4) for arm in bandit_dict["arm_ids"]},
         "alpha": bandit_dict["alpha"],
-        "update_count": bandit_dict["update_count"],
+        "update_count": total_updates,
         "feature_schema_version": bandit_dict.get("feature_schema_version", "v1"),
         "model_loaded": state.model_loaded,
     }
+    if EXPOSE_THETA:
+        response["theta_by_arm"] = {arm: [round(v, 4) for v in theta_by_arm[arm]] for arm in bandit_dict["arm_ids"]}
+    return response

@@ -24,20 +24,23 @@ const EWM_LAMBDA = 0.9;
 
 function computeEwmReward(blocks: FocusBlock[]): number {
   if (blocks.length === 0) return 0.55;
-  // Process oldest-first for correct EWM ordering
-  const ordered = [...blocks].reverse();
-  let ewm = computeReward(ordered[0]);
-  for (let i = 1; i < ordered.length; i++) {
-    ewm = EWM_LAMBDA * ewm + (1 - EWM_LAMBDA) * computeReward(ordered[i]);
+  // blocks are newest-first; iterating in that order gives most-recent the highest weight.
+  // ewm = λ*current + (1-λ)*older — so the first (most recent) block dominates.
+  let ewm = computeReward(blocks[0]);
+  for (let i = 1; i < blocks.length; i++) {
+    ewm = EWM_LAMBDA * ewm + (1 - EWM_LAMBDA) * computeReward(blocks[i]);
   }
   return Math.max(0, Math.min(1, ewm));
 }
 
-function computeStreakLength(blocks: FocusBlock[], now: Date): number {
+function computeStreakLength(blocks: FocusBlock[], now: Date, clientDateStr: string | null = null): number {
   if (blocks.length === 0) return 0;
   const days = new Set(blocks.map((b) => b.ended_at.slice(0, 10)));
   let streak = 0;
-  const d = new Date(now);
+  // Use client-supplied date (YYYY-MM-DD in local time) as the "today" pivot to avoid
+  // UTC date mismatch for users in UTC- timezones doing evening sessions.
+  const todayStr = clientDateStr ?? now.toISOString().slice(0, 10);
+  const d = new Date(todayStr + "T00:00:00Z");
   // eslint-disable-next-line no-constant-condition
   while (true) {
     const dateStr = d.toISOString().slice(0, 10);
@@ -68,7 +71,9 @@ export function buildContextSnapshot(
   distractionLevel: number | null,
   sessionType: SessionType | null,
   recentFatigue: (number | null)[] = [],
-  now: Date = new Date()
+  now: Date = new Date(),
+  hourOfDay: number | null = null,
+  clientDateStr: string | null = null
 ): ContextSnapshot {
   const window = blocks.slice(0, ROLLING_WINDOW);
   const last = blocks[0] ?? null;
@@ -90,7 +95,7 @@ export function buildContextSnapshot(
       : null;
 
   const ewmReward = computeEwmReward(window);
-  const streakLength = computeStreakLength(blocks, now);
+  const streakLength = computeStreakLength(blocks, now, clientDateStr);
 
   const nowMs = now.getTime();
   const MS_PER_HOUR = 3_600_000;
@@ -109,7 +114,7 @@ export function buildContextSnapshot(
   ).length;
 
   return {
-    hour_of_day: now.getHours(),
+    hour_of_day: hourOfDay ?? now.getHours(),
     day_of_week: now.getDay(),
     task_type: sessionType,
     energy_level: energyLevel,

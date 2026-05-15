@@ -10,10 +10,10 @@ type Props = {
 };
 
 const BUCKETS: { key: TimeBucket; label: string; hours: string }[] = [
-  { key: "morning", label: "Morning", hours: "6–12" },
+  { key: "morning",   label: "Morning",   hours: "6–12" },
   { key: "afternoon", label: "Afternoon", hours: "12–17" },
-  { key: "evening", label: "Evening", hours: "17–21" },
-  { key: "night", label: "Night", hours: "21–6" },
+  { key: "evening",   label: "Evening",   hours: "17–21" },
+  { key: "night",     label: "Night",     hours: "21–6" },
 ];
 
 const BAR_MAX_H = 80;
@@ -34,13 +34,13 @@ export default function TimeOfDayChart({ scores, best }: Props) {
   return (
     <div className="rounded-2xl border border-edge/40 bg-surface px-6 py-6">
       <div className="flex items-baseline justify-between">
-        <h2 className="text-[11px] font-semibold uppercase tracking-[0.1em] text-muted/60">
+        <h2 className="font-display text-[11px] font-semibold uppercase tracking-[0.1em] text-muted/50">
           Time of day
         </h2>
         {best && (
-          <p className="text-[11px] text-muted/50">
+          <p className="text-[11px] text-muted/45">
             Peak:{" "}
-            <span className="font-medium text-fg/70">
+            <span className="font-medium text-fg/60">
               {BUCKETS.find((b) => b.key === best)?.label}
             </span>
           </p>
@@ -64,7 +64,7 @@ export default function TimeOfDayChart({ scores, best }: Props) {
                 y1={y}
                 x2={chartW + 8}
                 y2={y}
-                stroke="#262630"
+                stroke="#1E1E38"
                 strokeWidth={0.5}
                 strokeOpacity={0.6}
               />
@@ -104,8 +104,8 @@ export default function TimeOfDayChart({ scores, best }: Props) {
                     y={y}
                     width={BAR_W}
                     height={barH}
-                    rx={5}
-                    fill={isBest ? "#1818AD" : "#1E1E2A"}
+                    rx={6}
+                    fill={isBest ? "#7C6EF5" : "#0F0F28"}
                     opacity={isHovered ? 1 : isBest ? 0.9 : 0.65}
                     className="transition-opacity duration-150"
                   />
@@ -115,7 +115,7 @@ export default function TimeOfDayChart({ scores, best }: Props) {
                     y1={BAR_MAX_H - 1}
                     x2={x + BAR_W - 6}
                     y2={BAR_MAX_H - 1}
-                    stroke="#262630"
+                    stroke="#1E1E38"
                     strokeWidth={1.5}
                     strokeLinecap="round"
                     strokeOpacity={0.4}
@@ -128,7 +128,7 @@ export default function TimeOfDayChart({ scores, best }: Props) {
                     x={x + BAR_W / 2}
                     y={y - 7}
                     textAnchor="middle"
-                    fill={isHovered || isBest ? "#E5E7EB" : "#9CA3AF"}
+                    fill={isHovered || isBest ? "#EAEAFC" : "#8282B0"}
                     fontSize="10"
                     fontWeight="600"
                     opacity={isHovered ? 1 : isBest ? 0.85 : 0.5}
@@ -143,10 +143,10 @@ export default function TimeOfDayChart({ scores, best }: Props) {
                   x={x + BAR_W / 2}
                   y={BAR_MAX_H + 18}
                   textAnchor="middle"
-                  fill={isBest || isHovered ? "#B4B7C9" : "#9CA3AF"}
+                  fill={isBest || isHovered ? "#8282B0" : "#535278"}
                   fontSize="11"
                   fontWeight="500"
-                  opacity={isBest || isHovered ? 1 : 0.45}
+                  opacity={isBest || isHovered ? 1 : 0.5}
                 >
                   {bucket.label}
                 </text>
@@ -156,7 +156,7 @@ export default function TimeOfDayChart({ scores, best }: Props) {
                   x={x + BAR_W / 2}
                   y={BAR_MAX_H + 32}
                   textAnchor="middle"
-                  fill="#9CA3AF"
+                  fill="#535278"
                   fontSize="9"
                   opacity={isHovered ? 0.6 : 0.3}
                 >
@@ -168,8 +168,8 @@ export default function TimeOfDayChart({ scores, best }: Props) {
                   <circle
                     cx={x + BAR_W / 2}
                     cy={BAR_MAX_H + 42}
-                    r={2}
-                    fill="#1818AD"
+                    r={2.5}
+                    fill="#7C6EF5"
                     opacity={0.8}
                   />
                 )}
@@ -180,11 +180,11 @@ export default function TimeOfDayChart({ scores, best }: Props) {
 
         {/* Tooltip */}
         {hovered && scores[hovered] !== null && (
-          <div className="pointer-events-none absolute -top-2 left-1/2 -translate-x-1/2 -translate-y-full rounded-lg border border-edge/60 bg-surface-elevated px-3 py-2 shadow-lg">
+          <div className="pointer-events-none absolute -top-2 left-1/2 -translate-x-1/2 -translate-y-full rounded-xl border border-edge/60 bg-surface-elevated px-3 py-2 shadow-lg">
             <p className="text-[12px] font-semibold text-fg">
               {BUCKETS.find((b) => b.key === hovered)?.label}
             </p>
-            <p className="mt-0.5 text-[11px] text-muted">
+            <p className="mt-0.5 text-[11px] text-muted/70">
               Score: {((scores[hovered] ?? 0) * 100).toFixed(0)}
             </p>
           </div>

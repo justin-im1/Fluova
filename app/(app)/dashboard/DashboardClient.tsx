@@ -3,15 +3,10 @@
 import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import type { Recommendation, FocusBlock, ConfidenceLevel, FatigueState, PlanBlock } from "@/lib/domain/types";
+import type { Recommendation, FocusBlock, ConfidenceLevel, PlanBlock } from "@/lib/domain/types";
 import { SESSION_TYPE_LABELS } from "@/lib/domain/types";
 import { getLocalTimeBucket } from "@/lib/domain/time";
-import DurationChart from "@/components/DurationChart";
-import TimeOfDayChart from "@/components/TimeOfDayChart";
-import TrendSparkline from "@/components/TrendSparkline";
-import WeeklySummary from "@/components/WeeklySummary";
 import Toast from "@/components/Toast";
-import OnboardingPanel from "@/components/OnboardingPanel";
 
 type TimeBucket = "morning" | "afternoon" | "evening" | "night";
 
@@ -40,30 +35,714 @@ type Stats = {
   week_last: WeekData;
   rhythm_score: number | null;
   rhythm_score_delta: number | null;
-  /** Fatigue ratings oldest→newest (1–5). Empty when no rated sessions. */
   fatigue_trend_data: number[];
-  /** Average fatigue rating; null when no rated sessions. */
   fatigue_trend_avg: number | null;
-  /** Recommendation acceptance rate (0–1); null when < 3 events. */
   recommendation_acceptance_rate: number | null;
-  /** Best focus duration (minutes) per session type based on stored reward_v1. */
   best_duration_by_context: Record<string, number>;
 };
 
-// ── Confidence badge config ───────────────────────────────────────────────────
-const CONFIDENCE_CONFIG: Record<ConfidenceLevel, { label: string; dotColor: string }> = {
-  learning:    { label: "Learning",    dotColor: "bg-muted/30" },
-  calibrating: { label: "Calibrating", dotColor: "bg-primary/50" },
-  confident:   { label: "Confident",   dotColor: "bg-primary/90" },
+// ─── Palette constants (match Studio design) ──────────────────────────────────
+const ACCENT = "#C49560";
+const POS    = "#4EC99A";
+const WARN   = "#E0855A";
+
+const BORDER     = "rgba(210,185,150,0.08)";
+const BORDER_S   = "rgba(210,185,150,0.17)";
+const TEXT       = "#EDE8DF";
+const TEXT_S     = "rgba(237,232,223,0.58)";
+const TEXT_M     = "rgba(237,232,223,0.3)";
+const SURF       = "#121018";
+
+const BUCKET_DISPLAY: Record<TimeBucket, string> = {
+  morning: "Morning", afternoon: "Afternoon", evening: "Evening", night: "Night",
+};
+const BUCKET_HOURS: Record<TimeBucket, string> = {
+  morning: "6–12am", afternoon: "12–5pm", evening: "5–10pm", night: "10pm–6am",
 };
 
-// ── Fatigue state config ──────────────────────────────────────────────────────
-const FATIGUE_CONFIG: Record<FatigueState, { label: string; color: string }> = {
-  fatigued:  { label: "Fatigued",  color: "text-amber-400/70" },
-  stable:    { label: "Stable",    color: "text-muted/40" },
-  recovered: { label: "Recovered", color: "text-emerald-400/70" },
-  reset:     { label: "Fresh start", color: "text-sky-400/70" },
-};
+// ─── Micro-components ─────────────────────────────────────────────────────────
+
+function Ring({ val, size = 100, sw = 6, color, track = "rgba(255,255,255,0.06)" }: {
+  val: number; size?: number; sw?: number; color: string; track?: string;
+}) {
+  const r = (size - sw * 2) / 2, c = size / 2;
+  const circ = 2 * Math.PI * r;
+  const dash = (val / 100) * circ;
+  return (
+    <svg width={size} height={size} style={{ flexShrink: 0 }}>
+      <circle cx={c} cy={c} r={r} fill="none" stroke={track} strokeWidth={sw} />
+      <circle cx={c} cy={c} r={r} fill="none" stroke={color} strokeWidth={sw}
+        strokeDasharray={`${dash.toFixed(2)} ${(circ - dash).toFixed(2)}`}
+        strokeLinecap="round" transform={`rotate(-90 ${c} ${c})`} />
+    </svg>
+  );
+}
+
+function AreaChart({ data, color, gid, h = 68 }: {
+  data: number[]; color: string; gid: string; h?: number;
+}) {
+  if (data.length < 2) return <div style={{ height: h }} />;
+  const n = data.length;
+  const mn = Math.min(...data), mx = Math.max(...data), rng = mx - mn || 1;
+  const W = 300, H = h;
+  const pts: [number, number][] = data.map((v, i) => [
+    (i / (n - 1)) * W,
+    (H - 8) - ((v - mn) / rng) * (H - 16) + 4,
+  ]);
+  let d = `M ${pts[0]![0].toFixed(1)} ${pts[0]![1].toFixed(1)}`;
+  for (let i = 1; i < pts.length; i++) {
+    const [px, py] = pts[i - 1]!;
+    const [cx, cy] = pts[i]!;
+    const mx2 = (px + cx) / 2;
+    d += ` C ${mx2.toFixed(1)} ${py.toFixed(1)} ${mx2.toFixed(1)} ${cy.toFixed(1)} ${cx.toFixed(1)} ${cy.toFixed(1)}`;
+  }
+  const fillPath = `${d} L ${W} ${H} L 0 ${H} Z`;
+  const [lx, ly] = pts[pts.length - 1]!;
+  return (
+    <svg width="100%" height={H} viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none"
+      style={{ display: "block", overflow: "visible" }}>
+      <defs>
+        <linearGradient id={gid} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%"   stopColor={color} stopOpacity="0.25" />
+          <stop offset="100%" stopColor={color} stopOpacity="0.01" />
+        </linearGradient>
+      </defs>
+      <path d={fillPath} fill={`url(#${gid})`} />
+      <path d={d} fill="none" stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+      <circle cx={lx.toFixed(1)} cy={ly.toFixed(1)} r="3.5" fill={color} />
+    </svg>
+  );
+}
+
+function BarChart({ bars, recommended, accent }: {
+  bars: Array<{ d: string; v: number }>; recommended: number; accent: string;
+}) {
+  if (bars.length === 0) return null;
+  const maxV = Math.max(...bars.map(b => b.v)) * 1.15;
+  const W = 320, H = 96, barW = 26, gap = W / bars.length;
+  const ch = H - 18, recY = ch - (recommended / maxV) * ch;
+  return (
+    <svg width="100%" height={H} viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none"
+      style={{ display: "block" }}>
+      <line x1={0} y1={recY} x2={W} y2={recY} stroke={accent} strokeWidth="1" strokeDasharray="4 5" opacity="0.5" />
+      <text x={W - 2} y={recY - 4} textAnchor="end" fill={accent} fontSize="8"
+        fontFamily="'DM Mono',monospace" opacity="0.8">{recommended}m rec.</text>
+      {bars.map((bar, i) => {
+        const bh = (bar.v / maxV) * ch;
+        const x = i * gap + (gap - barW) / 2;
+        const isRec = Math.abs(bar.v - recommended) <= 1;
+        return (
+          <g key={i}>
+            <rect x={x.toFixed(1)} y={(ch - bh).toFixed(1)} width={barW} height={bh.toFixed(1)} rx={3}
+              fill={isRec ? accent : "rgba(255,255,255,0.06)"}
+              stroke={isRec ? accent : "rgba(255,255,255,0.1)"} strokeWidth="1" />
+            <text x={(x + barW / 2).toFixed(1)} y={H - 3} textAnchor="middle"
+              fill="rgba(237,232,223,0.28)" fontSize="8.5" fontFamily="'DM Mono',monospace">
+              {bar.d}
+            </text>
+          </g>
+        );
+      })}
+    </svg>
+  );
+}
+
+function ConfPill({ level }: { level: ConfidenceLevel }) {
+  const map: Record<ConfidenceLevel, { label: string; bg: string; c: string }> = {
+    calibrating: { label: "Calibrating", bg: "rgba(224,133,90,0.15)",  c: WARN },
+    learning:    { label: "Learning",    bg: "rgba(196,149,96,0.15)",   c: ACCENT },
+    confident:   { label: "Confident",   bg: "rgba(78,201,154,0.15)",   c: POS },
+  };
+  const s = map[level];
+  return (
+    <span style={{
+      display: "inline-block", padding: "3px 10px", borderRadius: 4,
+      background: s.bg, color: s.c,
+      fontSize: 10, fontFamily: "'DM Mono',monospace", fontWeight: 500,
+      letterSpacing: "0.08em", textTransform: "uppercase",
+    }}>
+      {s.label}
+    </span>
+  );
+}
+
+function Lbl({ children, style }: { children: React.ReactNode; style?: React.CSSProperties }) {
+  return (
+    <span style={{
+      fontFamily: "'DM Mono',monospace", fontSize: 10, color: TEXT_M,
+      letterSpacing: "0.1em", textTransform: "uppercase", ...style,
+    }}>
+      {children}
+    </span>
+  );
+}
+
+function rhythmLabel(score: number) {
+  if (score >= 85) return "Excellent";
+  if (score >= 70) return "Strong";
+  if (score >= 55) return "Steady";
+  if (score >= 35) return "Building";
+  return "Starting out";
+}
+
+// ─── Hero ──────────────────────────────────────────────────────────────────────
+
+function HeroSection({ recommendation, stats }: {
+  recommendation: Recommendation | null;
+  stats: Stats | null;
+}) {
+  const currentBucket = getLocalTimeBucket();
+  const focusMin  = recommendation ? recommendation.recommended_focus_duration_sec / 60 : null;
+  const breakMin  = recommendation ? recommendation.recommended_break_duration_sec / 60 : null;
+  const successPct = recommendation ? Math.round(recommendation.estimated_session_score * 100) : null;
+  const isPeak    = recommendation?.best_time_bucket === currentBucket;
+
+  return (
+    <section style={{
+      position: "relative", overflow: "hidden",
+      padding: "40px 32px 40px",
+    }}>
+      {/* Ambient glows */}
+      <div style={{ position: "absolute", top: -80, left: -60, width: 500, height: 400, background: "radial-gradient(ellipse, rgba(196,149,96,0.07) 0%, transparent 65%)", pointerEvents: "none" }} />
+      <div style={{ position: "absolute", bottom: -60, right: 80, width: 360, height: 300, background: "radial-gradient(ellipse, rgba(78,201,154,0.04) 0%, transparent 70%)", pointerEvents: "none" }} />
+
+      {/* Date */}
+      <p style={{ fontFamily: "'Inter',sans-serif", fontSize: 13, color: TEXT_M, marginBottom: 24, letterSpacing: "0.01em" }}>
+        {new Date().toLocaleDateString("en", { weekday: "long", month: "long", day: "numeric" })}
+      </p>
+
+      <div style={{ display: "flex", alignItems: "flex-start", gap: 48, justifyContent: "space-between" }}>
+        {/* Left */}
+        <div style={{ flex: "1 1 0", minWidth: 0 }}>
+
+          {/* Status badges */}
+          {recommendation && (
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 20, flexWrap: "wrap" }}>
+              <ConfPill level={recommendation.confidence_level} />
+              {recommendation.fatigue_state && recommendation.fatigue_state !== "stable" && (
+                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <div style={{ width: 6, height: 6, borderRadius: "50%", background: recommendation.fatigue_state === "fatigued" ? WARN : POS }} />
+                  <span style={{ fontFamily: "'Inter',sans-serif", fontSize: 12, color: TEXT_S }}>
+                    {recommendation.fatigue_state === "fatigued" ? "Fatigue detected" : "Recovered"}
+                  </span>
+                </div>
+              )}
+              {isPeak && (
+                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <div className="pulse-dot" />
+                  <span style={{ fontFamily: "'Inter',sans-serif", fontSize: 12, color: TEXT_S }}>
+                    Peak window · {BUCKET_HOURS[currentBucket]}
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Big number */}
+          {focusMin !== null ? (
+            <div style={{ display: "flex", alignItems: "flex-end", gap: 0, marginBottom: 24, lineHeight: 1 }}>
+              <div style={{ position: "relative" }}>
+                <div style={{ position: "absolute", inset: "-20px -30px", background: "radial-gradient(ellipse, rgba(196,149,96,0.1) 0%, transparent 70%)", pointerEvents: "none" }} />
+                <span style={{ fontFamily: "'Syne',sans-serif", fontSize: 100, fontWeight: 800, color: TEXT, letterSpacing: "-0.04em", lineHeight: 1, position: "relative" }}>
+                  {focusMin}
+                </span>
+              </div>
+              <div style={{ paddingBottom: 14, marginLeft: 14 }}>
+                <div style={{ fontFamily: "'Inter',sans-serif", fontSize: 20, fontWeight: 300, color: TEXT_S, lineHeight: 1.2 }}>min focus</div>
+              </div>
+              <div style={{ fontFamily: "'Syne',sans-serif", fontSize: 44, fontWeight: 300, color: TEXT_M, paddingBottom: 10, margin: "0 12px" }}>+</div>
+              <span style={{ fontFamily: "'Syne',sans-serif", fontSize: 52, fontWeight: 600, color: TEXT_S, lineHeight: 1, paddingBottom: 8 }}>{breakMin}</span>
+              <div style={{ paddingBottom: 12, marginLeft: 12 }}>
+                <div style={{ fontFamily: "'Inter',sans-serif", fontSize: 18, fontWeight: 300, color: TEXT_M, lineHeight: 1.2 }}>min break</div>
+              </div>
+            </div>
+          ) : (
+            <div style={{ marginBottom: 24 }}>
+              <p style={{ fontFamily: "'Syne',sans-serif", fontSize: 28, fontWeight: 700, color: TEXT, marginBottom: 10 }}>Welcome to Fluova</p>
+              <p style={{ fontFamily: "'Inter',sans-serif", fontSize: 14, color: TEXT_M, lineHeight: 1.7, maxWidth: 400 }}>
+                Complete your first focus session to get a personalized recommendation.
+              </p>
+            </div>
+          )}
+
+          {/* Rationale blockquote */}
+          {recommendation?.rationale && (
+            <div style={{
+              borderLeft: `2px solid ${ACCENT}`, borderRadius: "0 8px 8px 0",
+              padding: "12px 18px", marginBottom: 14,
+              background: "linear-gradient(90deg, rgba(196,149,96,0.07), transparent)",
+              maxWidth: 560,
+            }}>
+              <p style={{ fontFamily: "'Inter',sans-serif", fontSize: 13.5, color: TEXT_S, lineHeight: 1.7 }}>
+                {recommendation.rationale}
+              </p>
+            </div>
+          )}
+
+          {/* Changed banner */}
+          {recommendation?.recommendation_change && (
+            <div style={{
+              display: "flex", alignItems: "center", gap: 10,
+              padding: "8px 14px", borderRadius: 8, marginBottom: 20,
+              background: "rgba(196,149,96,0.12)",
+              border: `1px solid rgba(196,149,96,0.18)`,
+              maxWidth: 560,
+            }}>
+              <Lbl>Updated</Lbl>
+              <span style={{ fontFamily: "'Inter',sans-serif", fontSize: 12, color: TEXT_S, lineHeight: 1.5, flex: 1 }}>
+                {recommendation.recommendation_change}
+              </span>
+            </div>
+          )}
+
+          {/* CTAs */}
+          <div style={{ display: "flex", gap: 12 }}>
+            {recommendation ? (
+              <>
+                <Link
+                  href={`/session/new?focus=${recommendation.recommended_focus_duration_sec}&break=${recommendation.recommended_break_duration_sec}`}
+                  className="btn-primary"
+                  style={{ padding: "14px 32px", display: "inline-block", textDecoration: "none", fontSize: 14 }}
+                >
+                  Start {focusMin} min session →
+                </Link>
+                <Link
+                  href="/session/new"
+                  className="btn-ghost"
+                  style={{ padding: "14px 24px", display: "inline-block", textDecoration: "none", fontSize: 14 }}
+                >
+                  Custom setup
+                </Link>
+              </>
+            ) : (
+              <Link
+                href="/session/new"
+                className="btn-primary"
+                style={{ padding: "14px 32px", display: "inline-block", textDecoration: "none", fontSize: 14 }}
+              >
+                Start first session →
+              </Link>
+            )}
+          </div>
+        </div>
+
+        {/* Right: rings + plan */}
+        {recommendation && (
+          <div style={{ flexShrink: 0, display: "flex", flexDirection: "column", gap: 18, alignItems: "flex-end", paddingTop: 8 }}>
+
+            {/* Success ring */}
+            {successPct !== null && (
+              <div style={{ position: "relative", display: "inline-block" }}>
+                <Ring val={successPct} size={110} sw={7} color={ACCENT} track="rgba(196,149,96,0.1)" />
+                <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
+                  <span style={{ fontFamily: "'Syne',sans-serif", fontSize: 26, fontWeight: 700, color: TEXT, lineHeight: 1 }}>{successPct}%</span>
+                  <span style={{ fontFamily: "'Inter',sans-serif", fontSize: 10, color: TEXT_M, marginTop: 3 }}>est. success</span>
+                </div>
+              </div>
+            )}
+
+            {/* Rhythm score */}
+            {stats?.rhythm_score != null && (
+              <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+                <div style={{ position: "relative" }}>
+                  <Ring val={stats.rhythm_score} size={52} sw={4} color={ACCENT} track="rgba(196,149,96,0.1)" />
+                  <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'Syne',sans-serif", fontSize: 13, fontWeight: 700, color: TEXT }}>
+                    {stats.rhythm_score}
+                  </div>
+                </div>
+                <div>
+                  <div style={{ fontFamily: "'Inter',sans-serif", fontSize: 13, fontWeight: 500, color: TEXT, marginBottom: 3 }}>
+                    {rhythmLabel(stats.rhythm_score)} rhythm
+                  </div>
+                  {stats.rhythm_score_delta != null && (
+                    <div style={{ fontFamily: "'DM Mono',monospace", fontSize: 11, color: stats.rhythm_score_delta >= 0 ? POS : WARN }}>
+                      {stats.rhythm_score_delta >= 0 ? "▲" : "▼"} {Math.abs(stats.rhythm_score_delta)} pts vs last
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Today's plan */}
+            {recommendation.next_plan && recommendation.next_plan.length > 0 && (
+              <div style={{ minWidth: 200 }}>
+                <Lbl style={{ display: "block", marginBottom: 10 }}>Today&apos;s plan</Lbl>
+                {recommendation.next_plan.map((s: PlanBlock, i: number) => (
+                  <div key={s.block_number} style={{
+                    display: "flex", alignItems: "center", gap: 8,
+                    padding: "6px 0",
+                    borderTop: i > 0 ? `1px solid ${BORDER}` : "none",
+                  }}>
+                    <span style={{ fontFamily: "'DM Mono',monospace", fontSize: 9, color: i === 0 ? ACCENT : TEXT_M, letterSpacing: "0.08em", width: 14 }}>B{s.block_number}</span>
+                    <span style={{ fontFamily: "'Inter',sans-serif", fontSize: 12, color: i === 0 ? TEXT : TEXT_S, flex: 1 }}>
+                      {s.focus_duration_sec / 60}m <span style={{ color: TEXT_M }}>+ {s.break_duration_sec / 60}m</span>
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
+// ─── Stats Strip ──────────────────────────────────────────────────────────────
+
+function StatsStrip({ stats }: { stats: Stats }) {
+  const items = [
+    ...(stats.rhythm_score != null ? [{
+      label: "Rhythm Score",
+      value: String(stats.rhythm_score),
+      sub: `${rhythmLabel(stats.rhythm_score)}${stats.rhythm_score_delta != null ? ` · ${stats.rhythm_score_delta >= 0 ? "▲" : "▼"} ${Math.abs(stats.rhythm_score_delta)}` : ""}`,
+      pos: (stats.rhythm_score_delta ?? 0) >= 0,
+    }] : []),
+    {
+      label: "Completion Rate",
+      value: `${Math.round(stats.completion_rate * 100)}%`,
+      sub: stats.completion_rate >= 0.8 ? "Strong" : stats.completion_rate >= 0.6 ? "Steady" : "Building",
+      pos: stats.completion_rate >= 0.7,
+    },
+    {
+      label: "Avg Focus Rating",
+      value: stats.avg_focus_rating.toFixed(1),
+      sub: stats.avg_focus_rating >= 4 ? "Excellent" : stats.avg_focus_rating >= 3 ? "On track" : "Rate honestly",
+      pos: stats.avg_focus_rating >= 3.5,
+    },
+    {
+      label: "Sessions (7 days)",
+      value: String(stats.sessions_last_7_days),
+      sub: `Goal: ${stats.daily_goal}/day`,
+      pos: stats.sessions_last_7_days >= stats.daily_goal * 5,
+    },
+    {
+      label: "Current Streak",
+      value: `${stats.current_streak}d`,
+      sub: stats.longest_streak > stats.current_streak ? `Best: ${stats.longest_streak}d` : "Personal best",
+      pos: stats.current_streak > 1,
+    },
+  ];
+
+  return (
+    <div style={{
+      padding: "0 32px",
+      borderTop: `1px solid rgba(210,185,150,0.18)`,
+      borderBottom: `1px solid ${BORDER}`,
+    }}>
+      <div style={{
+        display: "grid", gridTemplateColumns: `repeat(${items.length}, 1fr)`,
+      }}>
+        {items.map((s, i) => (
+          <div key={s.label} style={{
+            padding: "22px 24px",
+            borderRight: i < items.length - 1 ? `1px solid ${BORDER}` : "none",
+          }}>
+            <Lbl style={{ display: "block", marginBottom: 10 }}>{s.label}</Lbl>
+            <div style={{ fontFamily: "'Syne',sans-serif", fontSize: 24, fontWeight: 700, color: TEXT, lineHeight: 1, letterSpacing: "-0.02em" }}>{s.value}</div>
+            <div style={{ fontFamily: "'Inter',sans-serif", fontSize: 11, color: s.pos ? POS : TEXT_M, marginTop: 8 }}>{s.sub}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ─── Analytics ────────────────────────────────────────────────────────────────
+
+const CELL = { padding: "22px 24px" } as const;
+const CELL_SM = { padding: "22px 20px" } as const;
+const COL_DIV = { borderRight: `1px solid ${BORDER}` } as const;
+const ROW_TOP = { borderTop: `1px solid ${BORDER}` } as const;
+const ROW_BOT = { borderBottom: `1px solid ${BORDER}` } as const;
+
+function Analytics({ stats, blocks, recommendation, editingGoal, goalInput, savingGoal, onEdit, onCancel, onSave, onGoalChange }: {
+  stats: Stats;
+  blocks: FocusBlock[];
+  recommendation: Recommendation | null;
+  editingGoal: boolean;
+  goalInput: number;
+  savingGoal: boolean;
+  onEdit: () => void;
+  onCancel: () => void;
+  onSave: () => void;
+  onGoalChange: (n: number) => void;
+}) {
+  const recMin = recommendation ? recommendation.recommended_focus_duration_sec / 60 : 30;
+
+  const durBars = blocks.slice(0, 7).reverse().map(b => ({
+    d: new Date(b.started_at ?? "").toLocaleDateString("en", { weekday: "short" }),
+    v: Math.round(b.focus_duration_sec / 60),
+  }));
+
+  const todBuckets: TimeBucket[] = ["morning", "afternoon", "evening", "night"];
+  const todData = todBuckets
+    .map(b => ({ p: BUCKET_DISPLAY[b], bucket: b, r: stats.time_bucket_scores[b] ?? 0 }))
+    .filter(x => x.r > 0);
+
+  const bestDurEntries = Object.entries(stats.best_duration_by_context).sort(([a], [b]) => a.localeCompare(b));
+  const pct = Math.min(100, (stats.sessions_today / stats.daily_goal) * 100);
+  const goalDone = stats.sessions_today >= stats.daily_goal;
+
+  const hasRow2 = durBars.length > 0 || todData.length > 0;
+  // Match the stats strip column count exactly so vertical dividers align
+  const colCount = stats.rhythm_score != null ? 5 : 4;
+  const trendSpan = colCount - 2; // 3 of 5 or 2 of 4
+  const gridCols = `repeat(${colCount}, 1fr)`;
+
+  return (
+    <div style={{ padding: "0 32px" }}>
+
+      {/* Row 1: Trends · Best Duration · Daily Goal */}
+      <div style={{ display: "grid", gridTemplateColumns: gridCols, ...ROW_TOP, ...ROW_BOT }}>
+
+        {/* Trends */}
+        <div style={{ ...CELL, ...COL_DIV, gridColumn: `span ${trendSpan}` }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 26 }}>
+            <div>
+              <Lbl style={{ display: "block", marginBottom: 14 }}>Focus Rating Trend</Lbl>
+              <AreaChart data={stats.recent_trend} color={ACCENT} gid="g-perf" h={64} />
+              <p style={{ fontFamily: "'Inter',sans-serif", fontSize: 11, color: TEXT_M, marginTop: 10 }}>
+                {stats.recent_trend.length} sessions · avg {stats.avg_focus_rating.toFixed(1)}
+              </p>
+            </div>
+            <div>
+              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 14 }}>
+                <Lbl>Fatigue Trend</Lbl>
+                <span style={{ fontFamily: "'Inter',sans-serif", fontSize: 10, color: TEXT_M }}>lower = better</span>
+              </div>
+              <AreaChart data={stats.fatigue_trend_data} color={WARN} gid="g-fat" h={64} />
+              {stats.fatigue_trend_avg != null && (
+                <p style={{ fontFamily: "'Inter',sans-serif", fontSize: 11, color: TEXT_M, marginTop: 10 }}>
+                  avg {stats.fatigue_trend_avg.toFixed(1)}/5 · {stats.fatigue_trend_data.length} sessions
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Best Duration by Type */}
+        <div style={{ ...CELL_SM, ...COL_DIV }}>
+          <Lbl style={{ display: "block", marginBottom: 16 }}>Best Duration by Type</Lbl>
+          {bestDurEntries.length > 0 ? bestDurEntries.map(([type, minutes], i) => (
+            <div key={type} style={{
+              paddingBottom: i < bestDurEntries.length - 1 ? 12 : 0,
+              marginBottom: i < bestDurEntries.length - 1 ? 12 : 0,
+              borderBottom: i < bestDurEntries.length - 1 ? `1px solid ${BORDER}` : "none",
+            }}>
+              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+                <span style={{ fontFamily: "'Inter',sans-serif", fontSize: 12, color: TEXT_S }}>
+                  {SESSION_TYPE_LABELS[type as keyof typeof SESSION_TYPE_LABELS] ?? type}
+                </span>
+                <span style={{ fontFamily: "'DM Mono',monospace", fontSize: 12, color: TEXT }}>{minutes}m</span>
+              </div>
+              <div style={{ height: 3, background: BORDER, borderRadius: 1.5 }}>
+                <div style={{ width: `${(minutes / 60) * 100}%`, height: "100%", background: ACCENT, borderRadius: 1.5, opacity: 0.7 }} />
+              </div>
+            </div>
+          )) : (
+            <p style={{ fontFamily: "'Inter',sans-serif", fontSize: 12, color: TEXT_M, lineHeight: 1.6 }}>
+              Rate a few sessions by type to unlock this.
+            </p>
+          )}
+        </div>
+
+        {/* Daily Goal */}
+        <div style={{ ...CELL_SM }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+            <Lbl>Daily Goal</Lbl>
+            {!editingGoal && (
+              <button onClick={onEdit} style={{ fontFamily: "'DM Mono',monospace", fontSize: 10, color: ACCENT, background: "none", border: "none", cursor: "pointer", letterSpacing: "0.06em" }}>Edit</button>
+            )}
+          </div>
+
+          {editingGoal ? (
+            <div style={{ marginBottom: 16, display: "flex", alignItems: "center", gap: 8 }}>
+              <input
+                type="number" min={1} max={10} value={goalInput}
+                onChange={(e) => onGoalChange(parseInt(e.target.value, 10) || 1)}
+                style={{ width: 52, padding: "6px 10px", borderRadius: 7, border: `1px solid rgba(196,149,96,0.2)`, background: "#09080C", color: TEXT, fontFamily: "'DM Mono',monospace", fontSize: 13, outline: "none" }}
+              />
+              <span style={{ fontFamily: "'Inter',sans-serif", fontSize: 12, color: TEXT_M }}>/day</span>
+              <button onClick={onSave} disabled={savingGoal} style={{ marginLeft: "auto", fontFamily: "'DM Mono',monospace", fontSize: 10, color: ACCENT, background: "none", border: "none", cursor: "pointer" }}>
+                {savingGoal ? "Saving…" : "Save"}
+              </button>
+              <button onClick={onCancel} style={{ fontFamily: "'DM Mono',monospace", fontSize: 10, color: TEXT_M, background: "none", border: "none", cursor: "pointer" }}>Cancel</button>
+            </div>
+          ) : (
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ display: "flex", alignItems: "baseline", gap: 6, marginBottom: 12 }}>
+                <span style={{ fontFamily: "'Syne',sans-serif", fontSize: 38, fontWeight: 700, color: TEXT, lineHeight: 1 }}>
+                  {stats.sessions_today}
+                </span>
+                <span style={{ fontFamily: "'Inter',sans-serif", fontSize: 14, color: TEXT_M }}>/ {stats.daily_goal} sessions</span>
+                {goalDone && (
+                  <span style={{ fontFamily: "'DM Mono',monospace", fontSize: 9, letterSpacing: "0.06em", padding: "3px 8px", borderRadius: 4, background: "rgba(78,201,154,0.15)", color: POS }}>DONE</span>
+                )}
+              </div>
+              <div style={{ height: 3, background: BORDER, borderRadius: 2, marginBottom: 8 }}>
+                <div style={{ width: `${pct}%`, height: "100%", background: goalDone ? POS : ACCENT, borderRadius: 2, transition: "width 0.7s ease" }} />
+              </div>
+              <p style={{ fontFamily: "'Inter',sans-serif", fontSize: 11, color: goalDone ? POS : TEXT_M }}>
+                {goalDone
+                  ? "Goal complete for today"
+                  : `${stats.daily_goal - stats.sessions_today} more session${stats.daily_goal - stats.sessions_today === 1 ? "" : "s"} today`}
+              </p>
+            </div>
+          )}
+
+          {/* Weekly mini */}
+          <div style={{ paddingTop: 14, borderTop: `1px solid ${BORDER}` }}>
+            <Lbl style={{ display: "block", marginBottom: 10 }}>This week vs last</Lbl>
+            {([
+              ["Sessions", stats.week_this.count, stats.week_last.count],
+              ["Completion", `${Math.round(stats.week_this.completion_rate * 100)}%`, `${Math.round(stats.week_last.completion_rate * 100)}%`],
+              ["Avg Rating", stats.week_this.avg_rating.toFixed(1), stats.week_last.avg_rating.toFixed(1)],
+            ] as const).map(([k, n, p]) => (
+              <div key={k} style={{ display: "flex", alignItems: "center", padding: "4px 0" }}>
+                <span style={{ fontFamily: "'Inter',sans-serif", fontSize: 11, color: TEXT_M, flex: 1 }}>{k}</span>
+                <span style={{ fontFamily: "'DM Mono',monospace", fontSize: 12, color: TEXT, marginRight: 10 }}>{n}</span>
+                <span style={{ fontFamily: "'Inter',sans-serif", fontSize: 10, color: TEXT_M }}>vs {p}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Row 2: Session Durations · Time of Day — same colCount grid, mirrored spans */}
+      {hasRow2 && (
+        <div style={{ display: "grid", gridTemplateColumns: gridCols, ...ROW_BOT }}>
+          {durBars.length > 0 && (
+            <div style={{ ...CELL, ...(todData.length > 0 ? COL_DIV : {}), gridColumn: `span ${trendSpan}` }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 18 }}>
+                <Lbl>Session Durations — Past 7 Days</Lbl>
+                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <div style={{ width: 16, height: 2, background: ACCENT }} />
+                  <span style={{ fontFamily: "'Inter',sans-serif", fontSize: 10, color: TEXT_M }}>{recMin}m rec.</span>
+                </div>
+              </div>
+              <BarChart bars={durBars} recommended={recMin} accent={ACCENT} />
+            </div>
+          )}
+          {todData.length > 0 && (
+            <div style={{ ...CELL, gridColumn: `span ${colCount - trendSpan}` }}>
+              <Lbl style={{ display: "block", marginBottom: 18 }}>Performance by Time of Day</Lbl>
+              <div style={{ display: "grid", gridTemplateColumns: `repeat(${todData.length}, 1fr)`, gap: 14 }}>
+                {todData.map((row, i) => {
+                  const isBest = row.bucket === stats.best_time_bucket;
+                  return (
+                    <div key={row.p}>
+                      <div style={{ fontFamily: "'Syne',sans-serif", fontSize: 24, fontWeight: 700, color: isBest ? ACCENT : TEXT_S, lineHeight: 1, marginBottom: 4, letterSpacing: "-0.02em" }}>
+                        {row.r.toFixed(1)}
+                      </div>
+                      <div style={{ fontFamily: "'Inter',sans-serif", fontSize: 12, color: TEXT_M, marginBottom: 8 }}>{row.p}</div>
+                      <div style={{ height: 3, background: BORDER, borderRadius: 2 }}>
+                        <div style={{ width: `${(row.r / 5) * 100}%`, height: "100%", background: isBest ? ACCENT : `rgba(196,149,96,${0.35 - i * 0.07})`, borderRadius: 2 }} />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Recent Sessions ──────────────────────────────────────────────────────────
+
+function RecentSessionsTable({ blocks }: { blocks: FocusBlock[] }) {
+  if (blocks.length === 0) return null;
+  return (
+    <div style={{ padding: "0 32px 52px" }}>
+      <div style={{ borderTop: `1px solid ${BORDER}`, paddingTop: 22 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 18 }}>
+          <Lbl>Recent Sessions</Lbl>
+          <Link href="/session/new" style={{ fontFamily: "'Inter',sans-serif", fontSize: 12, color: ACCENT, textDecoration: "none" }}>
+            New session →
+          </Link>
+        </div>
+        <table style={{ width: "100%", borderCollapse: "collapse" }}>
+          <thead>
+            <tr>
+              {["Time", "Duration", "Type", "Rating", "Status"].map(h => (
+                <th key={h} style={{ textAlign: "left", padding: "0 12px 10px 0", fontFamily: "'DM Mono',monospace", fontSize: 10, color: TEXT_M, letterSpacing: "0.09em", textTransform: "uppercase", fontWeight: 500 }}>
+                  {h}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {blocks.map(b => (
+              <tr key={b.id} className="session-row" style={{ borderTop: `1px solid ${BORDER}` }}>
+                <td style={{ padding: "11px 12px 11px 0", fontFamily: "'Inter',sans-serif", fontSize: 13, color: TEXT_M }}>
+                  {b.started_at ? new Date(b.started_at).toLocaleString("en", { weekday: "short", hour: "2-digit", minute: "2-digit" }) : "—"}
+                </td>
+                <td style={{ padding: "11px 12px 11px 0", fontFamily: "'DM Mono',monospace", fontSize: 13, color: TEXT, fontWeight: 500 }}>
+                  {b.focus_duration_sec / 60}m
+                </td>
+                <td style={{ padding: "11px 12px 11px 0", fontFamily: "'Inter',sans-serif", fontSize: 13, color: TEXT_S }}>
+                  {b.session_type ? (SESSION_TYPE_LABELS[b.session_type] ?? b.session_type) : "—"}
+                </td>
+                <td style={{ padding: "11px 12px 11px 0" }}>
+                  <span style={{ display: "inline-flex", gap: 3 }}>
+                    {[1, 2, 3, 4, 5].map(dot => (
+                      <span key={dot} style={{ width: 8, height: 8, borderRadius: "50%", background: dot <= b.focus_rating ? ACCENT : "rgba(255,255,255,0.1)", flexShrink: 0 }} />
+                    ))}
+                  </span>
+                </td>
+                <td style={{ padding: "11px 0" }}>
+                  <span style={{
+                    display: "inline-block", padding: "4px 10px", borderRadius: 6,
+                    fontFamily: "'DM Mono',monospace", fontSize: 10, letterSpacing: "0.05em",
+                    background: b.completed ? "rgba(78,201,154,0.1)" : "rgba(248,113,113,0.1)",
+                    color: b.completed ? POS : "#F87171",
+                  }}>
+                    {b.completed ? "Done" : "Incomplete"}
+                  </span>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+// ─── Unlocks (no-data state) ──────────────────────────────────────────────────
+
+function UnlocksSection() {
+  const items = [
+    { label: "Rhythm Score",  desc: "Rolling performance trend, 0–100.",                       after: "2 sessions" },
+    { label: "Peak window",   desc: "The time of day you focus best.",                          after: "4 sessions" },
+    { label: "Session plan",  desc: "2–3 block projection for your day.",                       after: "4 sessions" },
+    { label: "Why it changed", desc: "Explanation when Fluova adjusts its recommendation.",    after: "2+ sessions" },
+  ];
+  return (
+    <div style={{ padding: "0 32px 48px" }}>
+      <div style={{ borderTop: `1px solid ${BORDER}`, borderBottom: `1px solid ${BORDER}`, padding: "22px 0" }}>
+        <Lbl style={{ display: "block", marginBottom: 18 }}>Unlocks with data</Lbl>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 20 }}>
+          {items.map(item => (
+            <div key={item.label} style={{ display: "flex", gap: 12 }}>
+              <div style={{ marginTop: 4, width: 6, height: 6, borderRadius: "50%", background: `${ACCENT}55`, flexShrink: 0 }} />
+              <div>
+                <p style={{ fontFamily: "'Inter',sans-serif", fontSize: 13, fontWeight: 500, color: TEXT_S, marginBottom: 4 }}>{item.label}</p>
+                <p style={{ fontFamily: "'Inter',sans-serif", fontSize: 12, color: TEXT_M, lineHeight: 1.5 }}>{item.desc}</p>
+                <p style={{ fontFamily: "'DM Mono',monospace", fontSize: 10, color: "rgba(237,232,223,0.2)", marginTop: 4 }}>after {item.after}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Dashboard ────────────────────────────────────────────────────────────────
 
 export default function DashboardClient() {
   const searchParams = useSearchParams();
@@ -73,41 +752,29 @@ export default function DashboardClient() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(
-    searchParams.get("toast") === "saved"
-      ? "Recommendation updated based on your latest session."
-      : null
+    searchParams.get("toast") === "saved" ? "Recommendation updated based on your latest session." : null
   );
   const dismissToast = useCallback(() => setToast(null), []);
 
-  // Goal editing state
   const [editingGoal, setEditingGoal] = useState(false);
   const [goalInput, setGoalInput] = useState(2);
   const [savingGoal, setSavingGoal] = useState(false);
 
   useEffect(() => {
     async function fetchData() {
-      // Pass local time bucket so the engine can weight by current time-of-day
       const bucket = getLocalTimeBucket();
-
       try {
         const [recRes, histRes, statsRes] = await Promise.all([
           fetch(`/api/recommendation?bucket=${bucket}`),
           fetch("/api/history?limit=10"),
           fetch("/api/stats"),
         ]);
-
-        if (recRes.ok) {
-          const recData = await recRes.json();
-          setRecommendation(recData.data);
-        }
-        if (histRes.ok) {
-          const histData = await histRes.json();
-          setBlocks((histData.data.focus_blocks ?? []).slice(0, 10));
-        }
+        if (recRes.ok) setRecommendation((await recRes.json()).data);
+        if (histRes.ok) setBlocks(((await histRes.json()).data.focus_blocks ?? []).slice(0, 10));
         if (statsRes.ok) {
-          const statsData = await statsRes.json();
-          setStats(statsData.data);
-          setGoalInput(statsData.data.daily_goal ?? 2);
+          const s = (await statsRes.json()).data;
+          setStats(s);
+          setGoalInput(s.daily_goal ?? 2);
         }
       } catch {
         setError("Failed to load data");
@@ -128,7 +795,7 @@ export default function DashboardClient() {
         body: JSON.stringify({ daily_session_goal: goalInput }),
       });
       if (res.ok) {
-        setStats((prev) => prev ? { ...prev, daily_goal: goalInput } : prev);
+        setStats(prev => prev ? { ...prev, daily_goal: goalInput } : prev);
         setEditingGoal(false);
       }
     } finally {
@@ -138,20 +805,20 @@ export default function DashboardClient() {
 
   if (loading) {
     return (
-      <div className="grid grid-cols-1 gap-x-8 gap-y-6 lg:grid-cols-[1fr_380px]">
-        <div className="space-y-6">
-          <div className="h-64 animate-pulse rounded-2xl bg-surface" />
-          <div className="h-40 animate-pulse rounded-2xl bg-surface" />
-          <div className="h-56 animate-pulse rounded-2xl bg-surface" />
-          <div className="h-44 animate-pulse rounded-2xl bg-surface" />
+      <div className="-mt-10 -mx-4 sm:-mx-8">
+        <div style={{ padding: "40px 32px 40px", borderBottom: `1px solid ${BORDER}` }}>
+          <div style={{ height: 16, width: 200, borderRadius: 4, background: SURF, marginBottom: 28 }} />
+          <div style={{ height: 220, borderRadius: 14, background: SURF, opacity: 0.6 }} />
         </div>
-        <div className="space-y-3">
-          <div className="h-[72px] animate-pulse rounded-2xl bg-surface" />
-          <div className="h-[72px] animate-pulse rounded-2xl bg-surface" />
-          <div className="h-[72px] animate-pulse rounded-2xl bg-surface" />
-          <div className="h-[72px] animate-pulse rounded-2xl bg-surface" />
-          <div className="h-20 animate-pulse rounded-2xl bg-surface" />
-          <div className="mt-3 h-64 animate-pulse rounded-2xl bg-surface" />
+        <div style={{ padding: "24px 32px" }}>
+          <div style={{ height: 84, borderRadius: 14, background: SURF, opacity: 0.6 }} />
+        </div>
+        <div style={{ padding: "4px 32px 24px", display: "flex", flexDirection: "column", gap: 14 }}>
+          <div style={{ height: 180, borderRadius: 14, background: SURF, opacity: 0.6 }} />
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <div style={{ height: 120, borderRadius: 14, background: SURF, opacity: 0.6 }} />
+            <div style={{ height: 120, borderRadius: 14, background: SURF, opacity: 0.6 }} />
+          </div>
         </div>
       </div>
     );
@@ -168,806 +835,27 @@ export default function DashboardClient() {
   const hasData = stats && stats.total_sessions > 0;
 
   return (
-    <div className="animate-fade-in">
-      <div className="grid grid-cols-1 gap-x-8 gap-y-6 lg:grid-cols-[1fr_380px]">
-
-        {/* ────────────────────────────────────────────────────────
-            LEFT — Hero: "Best next session"
-        ──────────────────────────────────────────────────────── */}
-        <div className="order-1 space-y-3 lg:col-start-1 lg:row-start-1">
-          {/* Onboarding panel — shown to new / low-data users until dismissed */}
-          {stats && stats.total_sessions < 5 && (
-            <OnboardingPanel totalSessions={stats.total_sessions} />
-          )}
-          <RecommendationHero recommendation={recommendation} />
-          {/* Change explanation — persisted from last recap; always visible when present */}
-          {recommendation?.recommendation_change && (
-            <RecommendationChangeBanner change={recommendation.recommendation_change} />
-          )}
-          {/* Multi-block plan — shown when engine has enough data */}
-          {recommendation?.next_plan && recommendation.next_plan.length > 1 && (
-            <NextPlanCard plan={recommendation.next_plan} />
-          )}
-        </div>
-
-        {/* ────────────────────────────────────────────────────────
-            RIGHT — Metrics, goal, trend, sessions
-        ──────────────────────────────────────────────────────── */}
-        {hasData && (
-          <div className="order-2 lg:col-start-2 lg:row-start-1 lg:row-span-4">
-            {/* Rhythm Score */}
-            {stats.rhythm_score !== null && (
-              <div className="mb-3">
-                <RhythmScoreCard
-                  score={stats.rhythm_score}
-                  delta={stats.rhythm_score_delta}
-                />
-              </div>
-            )}
-
-            {/* Peak window — shows when we have a clear best bucket */}
-            {stats.best_time_bucket && (
-              <div className="mb-3">
-                <PeakWindowCard
-                  bestBucket={stats.best_time_bucket}
-                  currentBucket={getLocalTimeBucket()}
-                />
-              </div>
-            )}
-
-            {/* Metric cards */}
-            <div className="grid grid-cols-3 gap-3 lg:grid-cols-1 lg:gap-3">
-              <MetricCard
-                label="Completion"
-                value={`${Math.round(stats.completion_rate * 100)}%`}
-                sublabel={
-                  stats.completion_rate >= 0.8 ? "Strong" :
-                  stats.completion_rate >= 0.6 ? "Steady" :
-                  "Try shorter sessions"
-                }
-              />
-              <MetricCard
-                label="Avg rating"
-                value={stats.avg_focus_rating.toFixed(1)}
-                suffix="/5"
-                sublabel={
-                  stats.avg_focus_rating >= 4 ? "Excellent" :
-                  stats.avg_focus_rating >= 3 ? "On track" :
-                  "Rate more honestly"
-                }
-              />
-              <MetricCard
-                label="Last 7 days"
-                value={String(stats.sessions_last_7_days)}
-                suffix={stats.sessions_last_7_days === 1 ? " session" : " sessions"}
-                sublabel={
-                  stats.goal_hit_days === 7 ? "Hitting daily goal" :
-                  stats.goal_hit_days >= 5 ? "Most days on track" :
-                  `Aim: ${stats.daily_goal}/day`
-                }
-              />
-              <StreakCard current={stats.current_streak} longest={stats.longest_streak} />
-              {stats.recommendation_acceptance_rate !== null && (
-                <MetricCard
-                  label="Rec. accepted"
-                  value={`${Math.round(stats.recommendation_acceptance_rate * 100)}%`}
-                  sublabel={
-                    stats.recommendation_acceptance_rate >= 0.8
-                      ? "Usually following Fluova"
-                      : stats.recommendation_acceptance_rate >= 0.5
-                      ? "Mixed acceptance"
-                      : "Often overriding"
-                  }
-                />
-              )}
-            </div>
-
-            {/* Daily goal */}
-            <div className="mt-3 rounded-2xl border border-edge/30 bg-surface px-5 py-4">
-              <div className="flex items-center justify-between">
-                <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted/50">
-                  Today&apos;s goal
-                </p>
-                {!editingGoal && (
-                  <button
-                    onClick={() => setEditingGoal(true)}
-                    className="text-[10px] text-muted/30 transition-colors hover:text-muted/60"
-                  >
-                    Edit
-                  </button>
-                )}
-              </div>
-
-              {editingGoal ? (
-                <div className="mt-2 flex items-center gap-2">
-                  <input
-                    type="number"
-                    min={1}
-                    max={10}
-                    value={goalInput}
-                    onChange={(e) => setGoalInput(parseInt(e.target.value, 10) || 1)}
-                    className="w-14 rounded-md border border-edge/40 bg-bg px-2 py-1 text-[13px] text-fg focus:border-primary/60 focus:outline-none"
-                  />
-                  <span className="text-[12px] text-muted/50">sessions/day</span>
-                  <button
-                    onClick={handleSaveGoal}
-                    disabled={savingGoal}
-                    className="ml-auto text-[11px] font-medium text-primary/70 transition-colors hover:text-primary disabled:opacity-50"
-                  >
-                    {savingGoal ? "Saving…" : "Save"}
-                  </button>
-                  <button
-                    onClick={() => setEditingGoal(false)}
-                    className="text-[11px] text-muted/30 hover:text-muted/60"
-                  >
-                    Cancel
-                  </button>
-                </div>
-              ) : (
-                <div className="mt-2">
-                  <div className="flex items-baseline gap-1.5">
-                    <p className="text-[20px] font-semibold tabular-nums leading-none text-fg">
-                      {stats.sessions_today}
-                      <span className="text-[11px] font-normal text-muted/40">
-                        /{stats.daily_goal}
-                      </span>
-                    </p>
-                    {stats.sessions_today >= stats.daily_goal && (
-                      <span className="text-[10px] font-medium text-emerald-500/70">Done</span>
-                    )}
-                  </div>
-                  <div className="mt-2 h-1 w-full overflow-hidden rounded-full bg-edge/20">
-                    <div
-                      className="h-full rounded-full bg-primary/60 transition-all duration-300"
-                      style={{
-                        width: `${Math.min(100, (stats.sessions_today / stats.daily_goal) * 100)}%`,
-                      }}
-                    />
-                  </div>
-                  {stats.goal_suggestion !== null && (
-                    <p className="mt-1.5 text-[10px] text-muted/40">
-                      {stats.goal_suggestion > stats.daily_goal
-                        ? `You've hit your goal every day this week — try ${stats.goal_suggestion}?`
-                        : `Adjust your goal to ${stats.goal_suggestion} sessions/day?`}
-                    </p>
-                  )}
-                  <p className="mt-1 text-[10px] text-muted/30">
-                    {stats.goal_hit_days}/7 days goal met this week
-                  </p>
-                </div>
-              )}
-            </div>
-
-            {/* Performance trend sparkline */}
-            {stats.recent_trend.length >= 2 && (
-              <div className="mt-3 rounded-2xl border border-edge/30 bg-surface px-5 py-4">
-                <TrendSparkline scores={stats.recent_trend} />
-                {/* Actionable prompt — only when the trend is clearly declining */}
-                {(() => {
-                  const n = stats.recent_trend.length;
-                  if (n < 4) return null;
-                  const half = Math.floor(n / 2);
-                  const recent = stats.recent_trend.slice(n - half);
-                  const older  = stats.recent_trend.slice(0, half);
-                  const avg = (arr: number[]) => arr.reduce((s, v) => s + v, 0) / arr.length;
-                  const slope = avg(recent) - avg(older);
-                  if (slope < -0.08) {
-                    return (
-                      <p className="mt-2.5 text-[10px] text-amber-400/60">
-                        Trend declining — consider a shorter session or a longer break next time.
-                      </p>
-                    );
-                  }
-                  if (slope > 0.08) {
-                    return (
-                      <p className="mt-2.5 text-[10px] text-emerald-500/50">
-                        Good momentum — keep the current pattern going.
-                      </p>
-                    );
-                  }
-                  return null;
-                })()}
-              </div>
-            )}
-
-            {/* Fatigue trend — visible once ≥5 sessions have a fatigue rating */}
-            {stats.fatigue_trend_data.length >= 5 && (
-              <div className="mt-3 rounded-2xl border border-edge/30 bg-surface px-5 py-4">
-                <FatigueTrendCard
-                  data={stats.fatigue_trend_data}
-                  avg={stats.fatigue_trend_avg}
-                />
-              </div>
-            )}
-
-            {/* Best duration by session type */}
-            {Object.keys(stats.best_duration_by_context).length > 0 && (
-              <div className="mt-3 rounded-2xl border border-edge/30 bg-surface px-5 py-4">
-                <BestDurationsByContext data={stats.best_duration_by_context} />
-              </div>
-            )}
-
-            {/* Recent sessions */}
-            <div className="mt-5">
-              <h2 className="text-[11px] font-semibold uppercase tracking-[0.1em] text-muted/50">
-                Recent sessions
-              </h2>
-              {blocks.length === 0 ? (
-                <p className="mt-4 text-[13px] text-muted/50">No sessions yet.</p>
-              ) : (
-                <ul className="mt-3 space-y-1.5">
-                  {blocks.map((block) => (
-                    <li
-                      key={block.id}
-                      className="flex items-center justify-between rounded-xl border border-edge/30 bg-surface px-4 py-2.5 transition-colors duration-150 hover:border-edge/60"
-                    >
-                      <div className="flex items-center gap-2.5">
-                        <span className="text-[13px] font-medium tabular-nums text-fg">
-                          {block.focus_duration_sec / 60}m
-                        </span>
-                        <span
-                          className={`rounded-full px-1.5 py-px text-[10px] font-medium ${
-                            block.completed
-                              ? "bg-emerald-950/30 text-emerald-500/70"
-                              : "bg-surface-elevated text-muted/40"
-                          }`}
-                        >
-                          {block.completed ? "Done" : "Partial"}
-                        </span>
-                        {block.session_type && (
-                          <span className="rounded-full border border-edge/30 px-1.5 py-px text-[10px] text-muted/40">
-                            {SESSION_TYPE_LABELS[block.session_type]}
-                          </span>
-                        )}
-                        <span className="text-[10px] capitalize text-muted/30">
-                          {block.time_bucket}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        {[1, 2, 3, 4, 5].map((dot) => (
-                          <div
-                            key={dot}
-                            className={`h-1 w-1 rounded-full ${
-                              dot <= block.focus_rating ? "bg-primary/70" : "bg-edge/40"
-                            }`}
-                          />
-                        ))}
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* LEFT — Duration chart */}
-        {blocks.length > 0 && (
-          <div className="order-3 lg:col-start-1 lg:row-start-2">
-            <DurationChart
-              blocks={blocks}
-              recommendedDuration={recommendation?.recommended_focus_duration_sec ?? null}
-            />
-          </div>
-        )}
-
-        {/* LEFT — Weekly summary */}
-        {hasData && (
-          <div className="order-4 lg:col-start-1 lg:row-start-3">
-            <WeeklySummary thisWeek={stats.week_this} lastWeek={stats.week_last} />
-          </div>
-        )}
-
-        {/* LEFT — Time-of-day chart */}
-        {hasData && stats.best_time_bucket && (
-          <div className="order-5 lg:col-start-1 lg:row-start-4">
-            <TimeOfDayChart scores={stats.time_bucket_scores} best={stats.best_time_bucket} />
-          </div>
-        )}
-
-        {/* No-data placeholder — preview what unlocks with real sessions */}
-        {!hasData && (
-          <div className="order-2 lg:col-start-2 lg:row-start-1">
-            <div className="rounded-2xl border border-edge/30 bg-surface px-5 py-5">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted/50">
-                Unlocks with data
-              </p>
-              <ul className="mt-3.5 space-y-3">
-                {([
-                  {
-                    label: "Rhythm Score",
-                    desc: "Rolling performance trend, 0–100.",
-                    after: "2 sessions",
-                  },
-                  {
-                    label: "Peak window",
-                    desc: "The time of day you focus best.",
-                    after: "4 sessions",
-                  },
-                  {
-                    label: "Session plan",
-                    desc: "2–3 block projection for your work window.",
-                    after: "4 sessions",
-                  },
-                  {
-                    label: "Recommendation changes",
-                    desc: "Why Fluova adjusted its suggestion.",
-                    after: "2+ sessions",
-                  },
-                ] as const).map((item) => (
-                  <li key={item.label} className="flex items-start gap-3">
-                    <span className="mt-[5px] h-1 w-1 shrink-0 rounded-full bg-edge/50" />
-                    <div>
-                      <p className="text-[12px] font-medium text-fg/60">{item.label}</p>
-                      <p className="text-[10px] leading-snug text-muted/40">{item.desc}</p>
-                      <p className="mt-0.5 text-[9px] text-muted/25">after {item.after}</p>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {toast && <Toast message={toast} onDone={dismissToast} />}
-    </div>
-  );
-}
-
-// ── Recommendation Hero Card ──────────────────────────────────────────────────
-
-/**
- * Builds a short imperative sentence summarising the recommendation.
- * This is the "coach voice" — direct, contextual, actionable.
- */
-function buildActionPhrase(rec: Recommendation): string {
-  const min = rec.recommended_focus_duration_sec / 60;
-  const breakMin = rec.recommended_break_duration_sec / 60;
-  const currentBucket = getLocalTimeBucket();
-
-  if (rec.confidence_level === "learning") {
-    return `Try a ${min}-min session to help Fluova learn your rhythm.`;
-  }
-  if (rec.fatigue_state === "fatigued") {
-    return `Recent scores dipped — go shorter today. ${min} min focus, ${breakMin} min break.`;
-  }
-  if (rec.fatigue_state === "recovered") {
-    if (rec.best_time_bucket && currentBucket === rec.best_time_bucket) {
-      return `You're in good form and this is your peak window. Run ${min} min.`;
-    }
-    return `Performance trending up. ${min} min focus recommended.`;
-  }
-  // stable
-  if (rec.best_time_bucket && currentBucket === rec.best_time_bucket) {
-    return `This is usually your strongest window. Run ${min} min.`;
-  }
-  return `Run a ${min}-min focus session.`;
-}
-
-function RecommendationHero({ recommendation }: { recommendation: Recommendation | null }) {
-  if (!recommendation) {
-    return (
-      <div className="rounded-2xl border border-edge/60 bg-surface px-7 py-8">
-        <div className="py-8 text-center lg:text-left">
-          <p className="text-[17px] font-medium text-fg">Welcome to Fluova</p>
-          <p className="mt-2 text-[13px] leading-relaxed text-muted/60">
-            Complete your first focus session to get a personalized recommendation.
-          </p>
-          <Link
-            href="/session/new"
-            className="mt-6 inline-block rounded-lg bg-primary px-5 py-2.5 text-[13px] font-medium text-white transition-all duration-150 hover:bg-primary-hover"
-          >
-            Start first session
-          </Link>
-        </div>
-      </div>
-    );
-  }
-
-  const confidence = CONFIDENCE_CONFIG[recommendation.confidence_level];
-  const blockCount = recommendation.block_count ?? 0;
-  const recencyLabel =
-    blockCount === 0
-      ? null
-      : blockCount === 1
-      ? "Based on 1 session"
-      : `Based on ${blockCount} sessions`;
-
-  const actionPhrase = buildActionPhrase(recommendation);
-
-  return (
-    <div className="rounded-2xl border border-edge/60 bg-surface px-7 py-8">
-      {/* Header row: label · confidence · recency */}
-      <div className="flex items-center justify-between">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.1em] text-muted/60">
-          Best next session
-        </p>
-        <div className="flex items-center gap-2.5">
-          {recencyLabel && (
-            <span className="text-[10px] text-muted/30">{recencyLabel}</span>
-          )}
-          {/* Fatigue state — shown for non-stable states only; "stable" adds no signal */}
-          {recommendation.fatigue_state && recommendation.fatigue_state !== "stable" && (
-            <span
-              className={`text-[9px] font-semibold uppercase tracking-[0.08em] ${FATIGUE_CONFIG[recommendation.fatigue_state].color}`}
-            >
-              {FATIGUE_CONFIG[recommendation.fatigue_state].label}
-            </span>
-          )}
-          <span className="flex items-center gap-1.5 rounded-full border border-edge/30 px-2 py-0.5">
-            <span className={`h-1.5 w-1.5 rounded-full ${confidence.dotColor}`} />
-            <span className="text-[9px] font-semibold uppercase tracking-[0.08em] text-muted/50">
-              {confidence.label}
-            </span>
-          </span>
-        </div>
-      </div>
-
-      {/* Duration — dominant numbers */}
-      <p className="mt-4 text-[34px] font-semibold leading-tight tabular-nums text-fg">
-        {recommendation.recommended_focus_duration_sec / 60}
-        <span className="text-[18px] font-normal text-muted/60"> min focus</span>
-        <span className="mx-2.5 text-edge/60">/</span>
-        {recommendation.recommended_break_duration_sec / 60}
-        <span className="text-[18px] font-normal text-muted/60"> min break</span>
-      </p>
-
-      {/* Primary imperative — coach voice */}
-      <p className="mt-2.5 text-[14px] font-medium leading-snug text-fg/80">
-        {actionPhrase}
-      </p>
-
-      {/* Supporting rationale — no heading, reads as context */}
-      <p className="mt-2 text-[13px] leading-relaxed text-muted/55">
-        {recommendation.rationale}
-      </p>
-
-      {/* Est. session score */}
-      <div className="mt-4 flex items-center gap-2 border-t border-edge/20 pt-4">
-        <span className="text-[11px] text-muted/40">Est. session score</span>
-        <span className="text-[11px] font-semibold tabular-nums text-muted/60">
-          {Math.round(recommendation.estimated_session_score * 100)}%
-        </span>
-      </div>
-
-      {/* CTAs */}
-      <div className="mt-5 flex items-center gap-3">
-        <Link
-          href={`/session/new?focus=${recommendation.recommended_focus_duration_sec}&break=${recommendation.recommended_break_duration_sec}`}
-          className="rounded-lg bg-primary px-5 py-2.5 text-[13px] font-medium text-white transition-all duration-150 hover:bg-primary-hover hover:shadow-[0_0_20px_rgba(24,24,173,0.2)]"
-        >
-          Start this session
-        </Link>
-        <Link
-          href="/session/new"
-          className="rounded-lg px-4 py-2.5 text-[13px] font-medium text-muted/50 transition-colors duration-150 hover:text-secondary"
-        >
-          Choose duration
-        </Link>
-      </div>
-    </div>
-  );
-}
-
-// ── Next-best plan card ───────────────────────────────────────────────────────
-
-function NextPlanCard({ plan }: { plan: PlanBlock[] }) {
-  return (
-    <div className="rounded-2xl border border-edge/40 bg-surface px-5 py-4">
-      <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-muted/50">
-        Session plan
-      </p>
-      <div className="mt-3 space-y-2.5">
-        {plan.map((block) => (
-          <div key={block.block_number} className="flex items-baseline justify-between gap-4">
-            <div className="flex items-baseline gap-2.5">
-              <span className="w-14 text-[11px] text-muted/30 tabular-nums">
-                Block {block.block_number}
-              </span>
-              <span className="text-[13px] font-medium tabular-nums text-fg">
-                {block.focus_duration_sec / 60}
-                <span className="text-[11px] font-normal text-muted/50"> min</span>
-              </span>
-              <span className="text-[11px] text-muted/30">/</span>
-              <span className="text-[12px] tabular-nums text-muted/50">
-                {block.break_duration_sec / 60}
-                <span className="text-[10px]"> min break</span>
-              </span>
-            </div>
-            {block.note && (
-              <span className="shrink-0 text-[10px] italic text-muted/35">
-                {block.note}
-              </span>
-            )}
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-// ── Recommendation change banner ──────────────────────────────────────────────
-
-function RecommendationChangeBanner({ change }: { change: string }) {
-  return (
-    <div className="rounded-2xl border border-primary/20 bg-primary/5 px-5 py-4">
-      <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-primary/50">
-        What changed
-      </p>
-      <p className="mt-1.5 text-[13px] leading-relaxed text-fg/70">{change}</p>
-    </div>
-  );
-}
-
-// ── Shared sub-components ─────────────────────────────────────────────────────
-
-function MetricCard({
-  label,
-  value,
-  suffix,
-  sublabel,
-}: {
-  label: string;
-  value: string;
-  suffix?: string;
-  /** Short decision-support context — what this number means for the user. */
-  sublabel?: string;
-}) {
-  return (
-    <div className="rounded-2xl border border-edge/30 bg-surface px-5 py-4 transition-all duration-150 hover:border-edge/50">
-      <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted/50">
-        {label}
-      </p>
-      <p className="mt-1 text-[20px] font-semibold tabular-nums leading-none text-fg">
-        {value}
-        {suffix && (
-          <span className="text-[11px] font-normal text-muted/40">{suffix}</span>
-        )}
-      </p>
-      {sublabel && (
-        <p className="mt-1 text-[10px] text-muted/40">{sublabel}</p>
-      )}
-    </div>
-  );
-}
-
-function RhythmScoreCard({
-  score,
-  delta,
-}: {
-  score: number;
-  delta: number | null;
-}) {
-  const label =
-    score >= 85 ? "Excellent" :
-    score >= 70 ? "Strong" :
-    score >= 55 ? "Steady" :
-    score >= 35 ? "Building" :
-    "Starting out";
-
-  const deltaPositive = delta !== null && delta > 0;
-  const deltaNegative = delta !== null && delta < 0;
-
-  return (
-    <div className="rounded-2xl border border-edge/30 bg-surface px-5 py-4 transition-all duration-150 hover:border-edge/50">
-      <div className="flex items-start justify-between">
-        <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted/50">
-          Rhythm Score
-        </p>
-        {delta !== null && (
-          <span
-            className={`text-[10px] font-medium tabular-nums ${
-              deltaPositive
-                ? "text-emerald-500/70"
-                : deltaNegative
-                ? "text-red-400/70"
-                : "text-muted/40"
-            }`}
-          >
-            {deltaPositive ? "+" : ""}{delta} vs prior 7
-          </span>
-        )}
-      </div>
-      <div className="mt-1 flex items-baseline gap-2">
-        <p className="text-[28px] font-semibold tabular-nums leading-none text-fg">
-          {score}
-          <span className="text-[11px] font-normal text-muted/40">/100</span>
-        </p>
-        <span className="text-[11px] text-muted/40">{label}</span>
-      </div>
-      {/* Score bar */}
-      <div className="mt-2.5 h-1 w-full overflow-hidden rounded-full bg-edge/20">
-        <div
-          className={`h-full rounded-full transition-all duration-500 ${
-            score >= 70 ? "bg-emerald-500/50" :
-            score >= 50 ? "bg-primary/50" :
-            "bg-amber-500/40"
-          }`}
-          style={{ width: `${score}%` }}
+    <div className="-mt-10 -mx-4 sm:-mx-8 animate-fade-in">
+      <HeroSection recommendation={recommendation} stats={stats} />
+      {hasData && <StatsStrip stats={stats} />}
+      {hasData ? (
+        <Analytics
+          stats={stats}
+          blocks={blocks}
+          recommendation={recommendation}
+          editingGoal={editingGoal}
+          goalInput={goalInput}
+          savingGoal={savingGoal}
+          onEdit={() => setEditingGoal(true)}
+          onCancel={() => setEditingGoal(false)}
+          onSave={handleSaveGoal}
+          onGoalChange={setGoalInput}
         />
-      </div>
-    </div>
-  );
-}
-
-function StreakCard({ current, longest }: { current: number; longest: number }) {
-  return (
-    <div className="rounded-2xl border border-edge/30 bg-surface px-5 py-4 transition-all duration-150 hover:border-edge/50">
-      <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted/50">
-        Streak
-      </p>
-      <div className="mt-1 flex items-baseline gap-2">
-        <p className="text-[20px] font-semibold tabular-nums leading-none text-fg">
-          {current}
-          <span className="text-[11px] font-normal text-muted/40">
-            {current === 1 ? " day" : " days"}
-          </span>
-        </p>
-        {longest > current && longest > 1 && (
-          <p className="text-[10px] text-muted/30">best {longest}</p>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// ── Peak window card ──────────────────────────────────────────────────────────
-
-const BUCKET_DISPLAY: Record<TimeBucket, string> = {
-  morning:   "Morning",
-  afternoon: "Afternoon",
-  evening:   "Evening",
-  night:     "Night",
-};
-
-/**
- * Shows the user's historically strongest time-of-day bucket and flags
- * whether they are currently in that window — directly actionable.
- */
-function PeakWindowCard({
-  bestBucket,
-  currentBucket,
-}: {
-  bestBucket: TimeBucket;
-  currentBucket: TimeBucket;
-}) {
-  const isNow = bestBucket === currentBucket;
-
-  return (
-    <div className="rounded-2xl border border-edge/30 bg-surface px-5 py-4 transition-all duration-150 hover:border-edge/50">
-      <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted/50">
-        Peak window
-      </p>
-      <div className="mt-1 flex items-baseline justify-between gap-2">
-        <p className="text-[20px] font-semibold leading-none text-fg">
-          {BUCKET_DISPLAY[bestBucket]}
-        </p>
-        {isNow ? (
-          <span className="text-[10px] font-medium text-emerald-500/70">Active now</span>
-        ) : (
-          <span className="text-[10px] text-muted/30 capitalize">{currentBucket} now</span>
-        )}
-      </div>
-      <p className="mt-1 text-[10px] text-muted/40">
-        {isNow
-          ? "You're in your strongest focus window — good conditions."
-          : "Schedule your most important work during this window."}
-      </p>
-    </div>
-  );
-}
-
-// ── Fatigue trend card ────────────────────────────────────────────────────────
-
-const W = 120;
-const H = 28;
-const PAD = 2;
-
-function FatigueTrendCard({ data, avg }: { data: number[]; avg: number | null }) {
-  // Lower fatigue = better. Invert to show "freshness" trend going up = good.
-  const inverted = data.map((v) => (6 - v) / 4); // maps 1→1.0, 5→0.0
-
-  const min = Math.min(...inverted);
-  const max = Math.max(...inverted);
-  const range = max - min || 0.01;
-  const xStep = (W - PAD * 2) / Math.max(inverted.length - 1, 1);
-
-  const points = inverted.map((s, i) => {
-    const x = PAD + i * xStep;
-    const y = PAD + (1 - (s - min) / range) * (H - PAD * 2);
-    return `${x.toFixed(1)},${y.toFixed(1)}`;
-  });
-
-  const first = inverted[0] ?? 0;
-  const last = inverted[inverted.length - 1] ?? 0;
-  const delta = last - first;
-  const color = delta > 0.1 ? "#4ade80" : delta < -0.1 ? "#f87171" : "#6366f1";
-  const trend = delta > 0.1 ? "Improving" : delta < -0.1 ? "Rising" : "Steady";
-
-  return (
-    <div>
-      <div className="flex items-center justify-between">
-        <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-muted/50">
-          Fatigue trend
-        </p>
-        <div className="flex items-center gap-2">
-          {avg !== null && (
-            <span className="text-[10px] tabular-nums text-muted/40">
-              avg {avg.toFixed(1)}/5
-            </span>
-          )}
-          <span className="text-[10px] font-medium" style={{ color, opacity: 0.8 }}>
-            {trend}
-          </span>
-        </div>
-      </div>
-      <div className="mt-2.5">
-        <svg
-          width="100%"
-          height={H}
-          viewBox={`0 0 ${W} ${H}`}
-          preserveAspectRatio="none"
-          className="overflow-visible"
-        >
-          <polyline
-            points={`${PAD},${H - PAD} ${points.join(" ")} ${PAD + (inverted.length - 1) * xStep},${H - PAD}`}
-            fill={color}
-            fillOpacity={0.06}
-            stroke="none"
-          />
-          <polyline
-            points={points.join(" ")}
-            fill="none"
-            stroke={color}
-            strokeWidth={1.5}
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeOpacity={0.6}
-          />
-          <circle
-            cx={PAD + (inverted.length - 1) * xStep}
-            cy={(() => {
-              const lastPoint = points[points.length - 1];
-              return lastPoint ? parseFloat(lastPoint.split(",")[1] ?? String(PAD)) : PAD;
-            })()}
-            r={2.5}
-            fill={color}
-            fillOpacity={0.9}
-          />
-        </svg>
-        <p className="mt-1 text-[10px] text-muted/30">
-          Last {data.length} rated sessions · 1 = fresh, 5 = worn out
-        </p>
-      </div>
-    </div>
-  );
-}
-
-// ── Best durations by context ─────────────────────────────────────────────────
-
-function BestDurationsByContext({ data }: { data: Record<string, number> }) {
-  const entries = Object.entries(data).sort(([a], [b]) => a.localeCompare(b));
-
-  return (
-    <div>
-      <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-muted/50">
-        Best duration by type
-      </p>
-      <ul className="mt-3 space-y-2">
-        {entries.map(([type, minutes]) => (
-          <li key={type} className="flex items-center justify-between">
-            <span className="text-[12px] text-muted/50">
-              {SESSION_TYPE_LABELS[type as keyof typeof SESSION_TYPE_LABELS] ?? type}
-            </span>
-            <span className="text-[13px] font-semibold tabular-nums text-fg">
-              {minutes}
-              <span className="text-[10px] font-normal text-muted/40"> min</span>
-            </span>
-          </li>
-        ))}
-      </ul>
-      <p className="mt-2 text-[10px] text-muted/30">Based on stored reward scores</p>
+      ) : (
+        <UnlocksSection />
+      )}
+      <RecentSessionsTable blocks={blocks} />
+      {toast && <Toast message={toast} onDone={dismissToast} />}
     </div>
   );
 }

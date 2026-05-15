@@ -17,11 +17,11 @@ export default function Nav() {
   }
 
   return (
-    <nav className="border-b border-edge/60 bg-surface/70 backdrop-blur-md">
-      <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3 sm:px-8">
+    <nav className="sticky top-0 z-50 border-b border-edge/50 bg-bg/80 backdrop-blur-xl">
+      <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3.5 sm:px-8">
         <Link
           href="/dashboard"
-          className="text-[15px] font-semibold tracking-tight text-fg"
+          className="font-display text-[18px] font-bold tracking-tight text-fg"
         >
           Fluova
         </Link>
@@ -34,7 +34,7 @@ export default function Nav() {
           </NavLink>
           <button
             onClick={handleSignOut}
-            className="rounded-md px-2.5 py-1.5 text-[13px] font-medium text-muted/40 transition-colors duration-150 hover:text-muted"
+            className="rounded-lg px-3 py-1.5 text-[13px] font-medium text-muted/40 transition-all duration-150 hover:text-muted/70"
           >
             Sign out
           </button>
@@ -56,10 +56,10 @@ function NavLink({
   return (
     <Link
       href={href}
-      className={`rounded-md px-2.5 py-1.5 text-[13px] font-medium transition-colors duration-150 ${
+      className={`rounded-lg px-3 py-1.5 text-[13px] font-medium transition-all duration-150 ${
         active
-          ? "text-fg"
-          : "text-muted/60 hover:text-muted"
+          ? "bg-surface text-fg"
+          : "text-muted/50 hover:text-secondary"
       }`}
     >
       {children}

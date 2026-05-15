@@ -40,27 +40,34 @@ export default function DurationPicker({
     onBreakChange(getBreakDurationForFocus(presetFocusSec));
   }
 
+  const isRecommendedSelected =
+    recommendation && focusSec === recommendation.recommended_focus_duration_sec;
+
   return (
     <div className="space-y-4">
       {recommendation && (
         <button
           type="button"
           onClick={selectRecommended}
-          className={`w-full rounded-xl border-2 p-4 text-left transition-colors ${
-            focusSec === recommendation.recommended_focus_duration_sec
-              ? "border-primary bg-primary/10"
-              : "border-edge hover:border-muted/30"
+          className={`w-full rounded-2xl border-2 p-5 text-left transition-all duration-200 ${
+            isRecommendedSelected
+              ? "border-primary/40 bg-primary/[0.06]"
+              : "border-edge/50 hover:border-edge/80"
           }`}
         >
-          <div className="flex items-center gap-2">
-            <span className="text-[13px] font-semibold text-fg">
-              Recommended
-            </span>
-            <span className="rounded-full bg-primary/15 px-2 py-0.5 text-[11px] font-medium text-primary">
+          <div className="flex items-center gap-2.5">
+            <span className="text-[13px] font-semibold text-fg">Recommended</span>
+            <span
+              className="rounded-full px-2.5 py-0.5 text-[11px] font-medium text-white"
+              style={{
+                background: "linear-gradient(135deg, var(--color-primary), var(--color-primary-hover))",
+                opacity: 0.8,
+              }}
+            >
               {Math.round(recommendation.estimated_session_score * 100)}% est. score
             </span>
           </div>
-          <p className="mt-1 text-[13px] tabular-nums text-secondary">
+          <p className="mt-1.5 text-[13px] tabular-nums text-secondary/70">
             {recommendation.recommended_focus_duration_sec / 60} min focus /{" "}
             {recommendation.recommended_break_duration_sec / 60} min break
           </p>
@@ -68,19 +75,19 @@ export default function DurationPicker({
       )}
 
       <div>
-        <p className="mb-2 text-[11px] font-medium uppercase tracking-wider text-muted">
+        <p className="mb-2.5 text-[11px] font-semibold uppercase tracking-[0.1em] text-muted/40">
           Presets
         </p>
-        <div className="grid grid-cols-3 gap-2">
+        <div className="grid grid-cols-4 gap-2">
           {PRESETS.map((preset) => (
             <button
               key={preset.focusSec}
               type="button"
               onClick={() => selectPreset(preset.focusSec)}
-              className={`rounded-lg border px-3 py-2 text-[13px] font-medium transition-colors ${
+              className={`rounded-xl border px-3 py-2.5 text-[13px] font-medium transition-all duration-150 ${
                 focusSec === preset.focusSec
-                  ? "border-primary bg-primary text-white"
-                  : "border-edge text-secondary hover:border-muted/30"
+                  ? "btn-primary border-transparent"
+                  : "border-edge/50 text-secondary/70 hover:border-edge/80 hover:text-secondary"
               }`}
             >
               {preset.label}
@@ -89,7 +96,7 @@ export default function DurationPicker({
         </div>
       </div>
 
-      <p className="text-[13px] tabular-nums text-muted">
+      <p className="text-[13px] tabular-nums text-muted/50">
         {focusSec / 60} min focus · {breakSec / 60} min break
       </p>
     </div>

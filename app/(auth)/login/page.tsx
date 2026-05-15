@@ -39,57 +39,72 @@ function LoginForm() {
   }
 
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-bg px-4">
-      <div className="w-full max-w-sm space-y-8 rounded-xl border border-edge bg-surface p-8">
-        <div className="text-center">
-          <h1 className="text-2xl font-semibold tracking-tight text-fg">
+    <div className="relative flex min-h-screen flex-col items-center justify-center overflow-hidden bg-bg px-4">
+      {/* Ambient glow */}
+      <div
+        className="pointer-events-none absolute top-1/2 left-1/2 h-[700px] w-[700px] -translate-x-1/2 -translate-y-1/2 rounded-full blur-[130px]"
+        style={{ background: "radial-gradient(circle, rgba(124,110,245,0.07), transparent 70%)" }}
+      />
+
+      <div className="relative w-full max-w-sm animate-fade-in">
+        {/* Wordmark */}
+        <div className="mb-10 text-center">
+          <h1 className="font-display text-[36px] font-bold tracking-tight text-fg">
             Fluova
           </h1>
-          <p className="mt-1 text-sm text-muted">
-            Sign in with your email
+          <p className="mt-2 text-[14px] text-muted/55">
+            Adaptive deep work, built around you.
           </p>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label
-              htmlFor="email"
-              className="block text-sm font-medium text-secondary"
-            >
-              Email
-            </label>
-            <input
-              id="email"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-              placeholder="you@example.com"
-              className="mt-1 block w-full rounded-lg border border-edge bg-surface-elevated px-3 py-2 text-fg placeholder-muted/50 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+        <div className="rounded-2xl border border-edge/60 bg-surface p-8">
+          <p className="mb-6 text-[14px] font-medium text-secondary/80">
+            Sign in with a magic link
+          </p>
+
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div>
+              <label
+                htmlFor="email"
+                className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.1em] text-muted/50"
+              >
+                Email
+              </label>
+              <input
+                id="email"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+                placeholder="you@example.com"
+                className="block w-full rounded-xl border border-edge bg-surface-elevated px-4 py-3 text-[14px] text-fg placeholder-muted/30 transition-colors focus:border-primary/50 focus:outline-none focus:ring-1 focus:ring-primary/20"
+                disabled={status === "loading"}
+              />
+            </div>
+
+            {message && (
+              <p
+                className={`text-[13px] ${
+                  status === "error" ? "text-red-400" : "text-secondary/70"
+                }`}
+              >
+                {message}
+              </p>
+            )}
+
+            <button
+              type="submit"
               disabled={status === "loading"}
-            />
-          </div>
-
-          {message && (
-            <p
-              className={`text-sm ${
-                status === "error"
-                  ? "text-red-400"
-                  : "text-secondary"
-              }`}
+              className="btn-primary w-full rounded-xl px-4 py-3 text-[13px] font-semibold"
             >
-              {message}
-            </p>
-          )}
+              {status === "loading" ? "Sending…" : "Send magic link"}
+            </button>
+          </form>
+        </div>
 
-          <button
-            type="submit"
-            disabled={status === "loading"}
-            className="w-full rounded-lg bg-primary px-4 py-2.5 font-medium text-white transition-colors hover:bg-primary-hover disabled:opacity-50"
-          >
-            {status === "loading" ? "Sending…" : "Send link"}
-          </button>
-        </form>
+        <p className="mt-6 text-center text-[11px] text-muted/30">
+          No password needed — we'll email you a one-click sign-in link.
+        </p>
       </div>
     </div>
   );

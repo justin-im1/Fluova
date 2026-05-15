@@ -61,7 +61,7 @@ export default function DurationChart({ blocks, recommendedDuration }: Props) {
 
   return (
     <div className="rounded-2xl border border-edge/40 bg-surface px-6 py-6">
-      <h2 className="text-[11px] font-semibold uppercase tracking-[0.1em] text-muted/60">
+      <h2 className="font-display text-[11px] font-semibold uppercase tracking-[0.1em] text-muted/50">
         Duration performance
       </h2>
 
@@ -82,9 +82,9 @@ export default function DurationChart({ blocks, recommendedDuration }: Props) {
                 y1={y}
                 x2={chartW + 8}
                 y2={y}
-                stroke="#262630"
+                stroke="#1E1E38"
                 strokeWidth={0.5}
-                strokeOpacity={0.5}
+                strokeOpacity={0.6}
               />
             );
           })}
@@ -118,9 +118,9 @@ export default function DurationChart({ blocks, recommendedDuration }: Props) {
                     y={y}
                     width={BAR_W}
                     height={barH}
-                    rx={5}
-                    fill={isRecommended ? "#1818AD" : "#1E1E2A"}
-                    opacity={isHovered ? 1 : isRecommended ? 0.9 : 0.7}
+                    rx={6}
+                    fill={isRecommended ? "#7C6EF5" : "#0F0F28"}
+                    opacity={isHovered ? 1 : isRecommended ? 0.9 : 0.75}
                     className="transition-opacity duration-150"
                   />
                 ) : (
@@ -129,7 +129,7 @@ export default function DurationChart({ blocks, recommendedDuration }: Props) {
                     y1={BAR_MAX_H - 1}
                     x2={x + BAR_W - 6}
                     y2={BAR_MAX_H - 1}
-                    stroke="#262630"
+                    stroke="#1E1E38"
                     strokeWidth={1.5}
                     strokeLinecap="round"
                     strokeOpacity={0.4}
@@ -142,7 +142,7 @@ export default function DurationChart({ blocks, recommendedDuration }: Props) {
                     x={x + BAR_W / 2}
                     y={y - 8}
                     textAnchor="middle"
-                    fill={isHovered ? "#E5E7EB" : "#9CA3AF"}
+                    fill={isHovered ? "#EAEAFC" : "#8282B0"}
                     fontSize="10"
                     fontWeight="600"
                     opacity={isHovered ? 1 : 0.6}
@@ -157,10 +157,10 @@ export default function DurationChart({ blocks, recommendedDuration }: Props) {
                   x={x + BAR_W / 2}
                   y={BAR_MAX_H + 18}
                   textAnchor="middle"
-                  fill={isRecommended || isHovered ? "#B4B7C9" : "#9CA3AF"}
+                  fill={isRecommended || isHovered ? "#8282B0" : "#535278"}
                   fontSize="11"
                   fontWeight="500"
-                  opacity={isRecommended || isHovered ? 1 : 0.5}
+                  opacity={isRecommended || isHovered ? 1 : 0.55}
                 >
                   {arm.label}
                 </text>
@@ -170,8 +170,8 @@ export default function DurationChart({ blocks, recommendedDuration }: Props) {
                   <circle
                     cx={x + BAR_W / 2}
                     cy={BAR_MAX_H + 30}
-                    r={2}
-                    fill="#1818AD"
+                    r={2.5}
+                    fill="#7C6EF5"
                     opacity={0.8}
                   />
                 )}
@@ -182,11 +182,11 @@ export default function DurationChart({ blocks, recommendedDuration }: Props) {
 
         {/* Hover tooltip */}
         {hoveredData && hoveredData.count > 0 && (
-          <div className="pointer-events-none absolute -top-2 left-1/2 -translate-x-1/2 -translate-y-full rounded-lg border border-edge/60 bg-surface-elevated px-3.5 py-2.5 shadow-lg">
+          <div className="pointer-events-none absolute -top-2 left-1/2 -translate-x-1/2 -translate-y-full rounded-xl border border-edge/60 bg-surface-elevated px-3.5 py-2.5 shadow-lg">
             <p className="text-[12px] font-semibold text-fg">
               {hoveredData.sec / 60} min
             </p>
-            <div className="mt-1 space-y-0.5 text-[11px] text-muted">
+            <div className="mt-1 space-y-0.5 text-[11px] text-muted/70">
               <p>Completion: {Math.round(hoveredData.completionRate * 100)}%</p>
               <p>Avg rating: {hoveredData.avgRating.toFixed(1)}/5</p>
               <p>Score: {(hoveredData.score * 100).toFixed(0)}</p>
@@ -195,7 +195,7 @@ export default function DurationChart({ blocks, recommendedDuration }: Props) {
         )}
       </div>
 
-      <p className="mt-4 text-center text-[11px] text-muted/40">
+      <p className="mt-4 text-center text-[11px] text-muted/35">
         Score = 60% completion + 40% rating
         {recommendedDuration && "  ·  Dot = recommended"}
       </p>

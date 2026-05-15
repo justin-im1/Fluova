@@ -70,6 +70,26 @@ class DisjointLinUCB:
 
         return arm_id, scores, propensity, exploration_flag
 
+    @staticmethod
+    def select_from_scores(
+        scores: Dict[str, float],
+        eligible_arms: list[str] | None = None,
+        epsilon: float = 0.0,
+    ) -> Tuple[str, float, bool]:
+        """Select an arm from pre-computed UCB scores (no bandit state access needed)."""
+        arms = eligible_arms if eligible_arms else list(scores.keys())
+        n = len(arms)
+        explore = n > 1 and np.random.random() < epsilon
+        if explore:
+            arm_id = str(np.random.choice(arms))
+            propensity = epsilon / n
+            exploration_flag = True
+        else:
+            arm_id = max(arms, key=lambda a: scores.get(a, -float("inf")))
+            propensity = (1.0 - epsilon) + epsilon / n if n > 0 else 1.0
+            exploration_flag = False
+        return arm_id, propensity, exploration_flag
+
     def update(self, arm_id: str, x: np.ndarray, reward: float) -> None:
         self._ensure_arm(arm_id)
         self.A[arm_id] += np.outer(x, x)

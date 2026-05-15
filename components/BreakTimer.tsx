@@ -3,19 +3,9 @@
 import { useEffect, useRef, useState } from "react";
 
 type Props = {
-  /** Recommended break duration in seconds. */
   durationSec: number;
-  /** The moment the break began — used to derive elapsed time. */
   startedAt: Date;
-  /**
-   * Called when the user clicks "Ready" after the break timer reaches zero.
-   * Parent uses this to navigate to recap with outcome=completed.
-   */
   onDone: () => void;
-  /**
-   * Called when the user explicitly skips the break.
-   * `elapsedSec` lets the parent classify outcome as skipped vs shortened.
-   */
   onSkip: (elapsedSec: number) => void;
 };
 
@@ -56,40 +46,44 @@ export default function BreakTimer({ durationSec, startedAt, onDone, onSkip }: P
 
   return (
     <div className="flex flex-col items-center space-y-10 animate-fade-in">
-      <p className="text-[11px] font-semibold uppercase tracking-[0.15em] text-muted/50">
+      <p className="font-display text-[10px] font-semibold uppercase tracking-[0.2em] text-muted/40">
         Break
       </p>
 
       <div
-        className={`font-mono text-7xl font-light tracking-tight transition-colors duration-500 ${
-          breakDone ? "text-emerald-400" : "text-fg"
+        className={`font-mono text-[80px] font-light tabular-nums leading-none transition-colors duration-700 sm:text-[100px] ${
+          breakDone ? "text-emerald-400/80" : "text-secondary/60"
         }`}
       >
         {mm}:{ss}
       </div>
 
-      {/* Minimal progress bar */}
-      <div className="h-0.5 w-44 overflow-hidden rounded-full bg-surface-elevated">
+      {/* Progress bar */}
+      <div className="h-px w-52 overflow-hidden rounded-full bg-edge/30">
         <div
-          className={`h-full rounded-full transition-all duration-500 ${
-            breakDone ? "bg-emerald-400" : "bg-primary/50"
-          }`}
-          style={{ width: `${progressPct}%` }}
+          className="h-full rounded-full transition-all duration-700"
+          style={{
+            width: `${progressPct}%`,
+            background: breakDone
+              ? "linear-gradient(90deg, #34D399, #10b981)"
+              : "linear-gradient(90deg, var(--color-primary), var(--color-primary-hover))",
+            opacity: 0.5,
+          }}
         />
       </div>
 
       <p className="text-[12px] tabular-nums text-muted/30">
-        {durationSec / 60} min break recommended
+        {durationSec / 60} min break
       </p>
 
       {breakDone ? (
         <div className="flex flex-col items-center space-y-3">
-          <p className="text-[13px] text-muted/60">
+          <p className="text-[13px] text-muted/50">
             Break complete. Ready when you are.
           </p>
           <button
             onClick={onDone}
-            className="rounded-lg bg-primary px-6 py-2.5 text-[13px] font-medium text-white transition-colors hover:bg-primary-hover"
+            className="btn-primary rounded-xl px-6 py-2.5 text-[13px] font-semibold"
           >
             Continue to recap
           </button>
@@ -97,7 +91,7 @@ export default function BreakTimer({ durationSec, startedAt, onDone, onSkip }: P
       ) : (
         <button
           onClick={handleSkip}
-          className="rounded-lg px-5 py-2 text-[13px] font-medium text-muted/40 transition-colors hover:text-muted"
+          className="rounded-lg px-5 py-2 text-[13px] font-medium text-muted/35 transition-colors hover:text-muted/70"
         >
           Skip break
         </button>

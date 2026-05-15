@@ -12,17 +12,20 @@ def apply_safe_exploration(
     """
     Returns (eligible_arm_ids, epsilon) for ε-greedy exploration.
 
-    Eligible arms are those within min_plausibility × max(score) of the best.
+    Eligible arms are those within min_plausibility × score_range of the best score.
     Epsilon decays as the user accumulates sessions past 20.
     """
     if not ucb_scores:
         return [], 0.0
 
     max_score = max(ucb_scores.values())
-    threshold = min_plausibility * max_score if max_score > 0 else -float("inf")
+    # Use an absolute gap from the best score so the threshold works correctly
+    # regardless of sign (multiplicative scaling inverts for negative scores).
+    score_range = max_score - min(ucb_scores.values())
+    gap_threshold = min_plausibility * score_range
 
     sorted_arms = sorted(ucb_scores.keys(), key=lambda a: ucb_scores[a], reverse=True)
-    eligible = [a for a in sorted_arms[:top_k] if ucb_scores[a] >= threshold]
+    eligible = [a for a in sorted_arms[:top_k] if max_score - ucb_scores[a] <= gap_threshold]
 
     if not eligible:
         eligible = [sorted_arms[0]]
@@ -43,6 +46,7 @@ def apply_safe_exploration(
 
 def cold_start_alpha(base_alpha: float, session_count: int, threshold: int = 10) -> float:
     """Decays alpha from 2×base toward base over the first threshold sessions."""
+    session_count = max(0, session_count)
     if session_count >= threshold:
         return base_alpha
     t = session_count / threshold
@@ -58,7 +62,11 @@ def select_cold_start_default(arm_ids: list[str], energy_level: float | None) ->
     return standard_id
 
 
-def all_scores_tied(ucb_scores: dict[str, float], tolerance: float = 0.05) -> bool:
-    """True when all UCB scores are within tolerance of each other."""
+def all_scores_tied(ucb_scores: dict[str, float], rel_tolerance: float = 0.01) -> bool:
+    """True when the score spread is less than rel_tolerance × the scale of the scores."""
     values = list(ucb_scores.values())
-    return (max(values) - min(values)) <= tolerance if values else True
+    if not values:
+        return True
+    spread = max(values) - min(values)
+    scale = max(abs(max(values)), 1e-6)
+    return spread / scale <= rel_tolerance

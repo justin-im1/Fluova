@@ -33,6 +33,15 @@ export async function POST(request: NextRequest) {
     return errorResponse("invalid_body", "focus_duration_sec and break_duration_sec required", 400);
   }
 
+  const VALID_FOCUS_SEC = new Set([1500, 1800, 2100, 2400, 2700, 3000, 3300]);
+  const VALID_BREAK_SEC = new Set([300, 480, 600]);
+  if (!VALID_FOCUS_SEC.has(focus_duration_sec)) {
+    return errorResponse("invalid_body", "focus_duration_sec must be one of 1500, 1800, 2100, 2400, 2700, 3000, 3300", 400);
+  }
+  if (!VALID_BREAK_SEC.has(break_duration_sec)) {
+    return errorResponse("invalid_body", "break_duration_sec must be one of 300, 480, 600", 400);
+  }
+
   const sessionType: SessionType | null =
     body.session_type && VALID_SESSION_TYPES.has(body.session_type)
       ? (body.session_type as SessionType)

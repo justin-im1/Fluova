@@ -131,7 +131,8 @@ export async function GET() {
       .from("focus_blocks")
       .select("focus_rating, completed, ended_at, time_bucket, focus_duration_sec, session_type")
       .eq("user_id", user.id)
-      .order("ended_at", { ascending: false }),
+      .order("ended_at", { ascending: false })
+      .limit(200),
     supabase
       .from("user_pomodoro_prefs")
       .select("daily_session_goal")

@@ -17,8 +17,12 @@ export async function getServerUser() {
             cookiesToSet.forEach(({ name, value, options }) =>
               cookieStore.set(name, value, options)
             );
-          } catch {
-            // Called from Server Component
+          } catch (e) {
+            // Expected when called from a Server Component (read-only cookies).
+            // Log unexpected errors to aid debugging.
+            if (e instanceof Error && e.message !== "Cookies can only be modified in a Server Action or Route Handler") {
+              console.warn("[auth] Unexpected cookie-set failure:", e.message);
+            }
           }
         },
       },

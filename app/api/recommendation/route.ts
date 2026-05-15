@@ -31,6 +31,7 @@ type LinUCBResult = {
 };
 
 async function tryLinUCB(
+  userId: string,
   contextSnapshot: ReturnType<typeof buildContextSnapshot>,
   sessionCount: number
 ): Promise<LinUCBResult | null> {
@@ -47,7 +48,7 @@ async function tryLinUCB(
         ...(ML_SERVICE_SECRET ? { "x-admin-api-key": ML_SERVICE_SECRET } : {}),
       },
       body: JSON.stringify({
-        user_id: "server",
+        user_id: userId,
         context_snapshot: contextSnapshot,
         session_count: sessionCount,
       }),
@@ -82,6 +83,7 @@ const ARM_MODE: Record<number, string> = {
   2400: "standard",
   2700: "deep",
   3000: "deep",
+  3300: "deep",
 };
 
 function getBreakForArm(focusSec: number): number {
@@ -158,9 +160,19 @@ export async function GET(request: NextRequest) {
       ? (rawType as SessionType)
       : undefined;
 
+  const rawHour = params.get("hour_of_day");
+  const clientHourOfDay: number | null =
+    rawHour !== null && Number.isInteger(Number(rawHour)) && Number(rawHour) >= 0 && Number(rawHour) <= 23
+      ? Number(rawHour)
+      : null;
+
+  const rawDate = params.get("date");
+  const clientDateStr: string | null =
+    rawDate && /^\d{4}-\d{2}-\d{2}$/.test(rawDate) ? rawDate : null;
+
   const supabase = createAdminClient();
 
-  const [blocksResult, prefsResult, sessionsResult] = await Promise.all([
+  const [blocksResult, prefsResult, sessionsResult, countResult] = await Promise.all([
     supabase
       .from("focus_blocks")
       .select("*")
@@ -179,6 +191,10 @@ export async function GET(request: NextRequest) {
       .not("fatigue_rating_post", "is", null)
       .order("created_at", { ascending: false })
       .limit(10),
+    supabase
+      .from("focus_blocks")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", user.id),
   ]);
 
   if (blocksResult.error) {
@@ -196,6 +212,8 @@ export async function GET(request: NextRequest) {
     (s) => s.fatigue_rating_post as number | null
   );
 
+  const totalSessionCount = countResult.count ?? blocksForRec.length;
+
   const heuristicRec = computeRecommendation(blocksForRec, currentBucket, sessionType);
 
   // Energy/distraction are not yet available at recommendation time — passed null.
@@ -204,11 +222,14 @@ export async function GET(request: NextRequest) {
     null,
     null,
     sessionType ?? null,
-    recentFatigue
+    recentFatigue,
+    undefined,
+    clientHourOfDay,
+    clientDateStr
   );
 
   // Try LinUCB first; fall back to heuristic on failure or timeout.
-  const linucbResult = await tryLinUCB(contextSnapshot, blocksForRec.length);
+  const linucbResult = await tryLinUCB(user.id, contextSnapshot, totalSessionCount);
 
   let recommendation = heuristicRec;
   let policyType: "linucb" | "heuristic" = "heuristic";

@@ -26,17 +26,14 @@ export default function SessionPage() {
   const [breakStartedAt, setBreakStartedAt] = useState<Date | null>(null);
   const [ending, setEnding] = useState(false);
 
-  // Pause state
   const [isPaused, setIsPaused] = useState(false);
   const pausedAtRef = useRef<number | null>(null);
   const pausedOffsetRef = useRef(0);
   const pausedCountRef = useRef(0);
   const [pausedOffsetDisplay, setPausedOffsetDisplay] = useState(0);
 
-  // Elapsed seconds when the user paused (for abandon logic)
   const [elapsedAtPause, setElapsedAtPause] = useState(0);
 
-  // Guard: only end the session once even if onComplete and handleEnd race.
   const sessionEndedRef = useRef(false);
 
   useEffect(() => {
@@ -72,7 +69,6 @@ export default function SessionPage() {
     setIsPaused(false);
   }
 
-  /** End the focus session server-side, then transition to the break screen. */
   async function transitionToBreak() {
     if (sessionEndedRef.current) return;
     sessionEndedRef.current = true;
@@ -88,7 +84,7 @@ export default function SessionPage() {
         }),
       });
     } catch {
-      // Non-fatal: break screen still shown even on network hiccup.
+      // Non-fatal
     }
 
     setBreakStartedAt(new Date());
@@ -112,22 +108,19 @@ export default function SessionPage() {
         }),
       });
     } catch {
-      // Non-fatal.
+      // Non-fatal
     }
 
     router.push(`/session/${sessionId}/recap?abandoned=true`);
   }
 
-  /** Navigate to recap after break completes naturally. */
   function handleBreakDone(breakDurationSec: number) {
     router.push(
       `/session/${sessionId}/recap?break_outcome=completed&break_duration=${breakDurationSec}`
     );
   }
 
-  /** Navigate to recap when user skips the break. */
   function handleBreakSkip(elapsedSec: number) {
-    // ≥30 s into the break counts as "shortened"; less counts as "skipped".
     const outcome = elapsedSec >= 30 ? "shortened" : "skipped";
     const actualDuration = elapsedSec >= 30 ? elapsedSec : 0;
     router.push(
@@ -135,7 +128,6 @@ export default function SessionPage() {
     );
   }
 
-  // Show abandon button once the user has paused or 5 minutes have elapsed.
   const showAbandon =
     isPaused ||
     (session !== null &&
@@ -157,12 +149,12 @@ export default function SessionPage() {
   if (!session) {
     return (
       <div className="flex min-h-[70vh] flex-col items-center justify-center space-y-4">
-        <p className="text-[13px] text-muted/60">
+        <p className="text-[13px] text-muted/50">
           Session not found or already ended.
         </p>
         <a
           href="/dashboard"
-          className="text-[13px] font-medium text-primary/80 transition-colors duration-150 hover:text-primary"
+          className="text-[13px] font-medium text-primary/70 transition-colors hover:text-primary"
         >
           Back to dashboard
         </a>
@@ -185,8 +177,23 @@ export default function SessionPage() {
 
   return (
     <div className="flex min-h-[70vh] flex-col items-center justify-center animate-fade-in">
-      <div className="flex flex-col items-center space-y-10">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.15em] text-muted/50">
+      <div className="relative flex flex-col items-center space-y-10">
+        {/* Ambient glow behind timer */}
+        <div
+          className="pointer-events-none absolute top-1/2 left-1/2 h-[380px] w-[380px] -translate-x-1/2 -translate-y-1/2 rounded-full blur-3xl"
+          style={{
+            background: isPaused
+              ? "radial-gradient(circle, rgba(83,82,121,0.08), transparent)"
+              : "radial-gradient(circle, rgba(124,110,245,0.07), transparent)",
+            transition: "background 0.8s ease",
+          }}
+        />
+
+        <p
+          className={`font-display text-[11px] font-semibold uppercase tracking-[0.22em] transition-colors duration-300 ${
+            isPaused ? "text-muted/35" : "text-muted/45"
+          }`}
+        >
           {isPaused ? "Paused" : "Focus"}
         </p>
 
@@ -198,7 +205,7 @@ export default function SessionPage() {
           onComplete={transitionToBreak}
         />
 
-        <p className="text-[12px] tabular-nums text-muted/30">
+        <p className="text-[12px] tabular-nums text-muted/25">
           {session.focus_duration_sec / 60} min session
         </p>
 
@@ -207,7 +214,7 @@ export default function SessionPage() {
             <button
               onClick={handleResume}
               disabled={ending}
-              className="rounded-lg px-5 py-2 text-[13px] font-medium text-primary/70 transition-colors duration-150 hover:text-primary disabled:opacity-50"
+              className="rounded-xl px-6 py-2.5 text-[13px] font-semibold text-primary/70 transition-all duration-150 hover:text-primary disabled:opacity-40"
             >
               Resume
             </button>
@@ -215,7 +222,7 @@ export default function SessionPage() {
             <button
               onClick={handlePause}
               disabled={ending}
-              className="rounded-lg px-5 py-2 text-[13px] font-medium text-muted/40 transition-colors duration-150 hover:text-muted disabled:opacity-50"
+              className="rounded-xl px-6 py-2.5 text-[13px] font-medium text-muted/35 transition-colors duration-150 hover:text-muted/70 disabled:opacity-40"
             >
               Pause
             </button>
@@ -224,7 +231,7 @@ export default function SessionPage() {
           <button
             onClick={transitionToBreak}
             disabled={ending}
-            className="rounded-lg px-5 py-2 text-[13px] font-medium text-muted/30 transition-colors duration-150 hover:text-muted/60 disabled:opacity-50"
+            className="rounded-xl px-6 py-2.5 text-[13px] font-medium text-muted/25 transition-colors duration-150 hover:text-muted/55 disabled:opacity-40"
           >
             End early
           </button>
@@ -233,7 +240,7 @@ export default function SessionPage() {
             <button
               onClick={handleAbandon}
               disabled={ending}
-              className="rounded-lg px-5 py-2 text-[13px] font-medium text-red-500/40 transition-colors duration-150 hover:text-red-400/70 disabled:opacity-50"
+              className="rounded-xl px-6 py-2.5 text-[13px] font-medium text-red-500/35 transition-colors duration-150 hover:text-red-400/65 disabled:opacity-40"
             >
               Abandon session
             </button>

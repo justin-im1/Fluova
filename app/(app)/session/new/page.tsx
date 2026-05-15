@@ -17,9 +17,9 @@ function buildRecUrl(sessionType: SessionType | null): string {
 }
 
 const CONFIDENCE_BADGE: Record<string, string> = {
-  learning: "bg-surface-elevated text-muted",
-  calibrating: "bg-amber-900/30 text-amber-400",
-  confident: "bg-green-900/30 text-green-400",
+  learning:    "bg-surface-elevated text-muted/60",
+  calibrating: "bg-amber-900/25 text-amber-400/80",
+  confident:   "bg-emerald-900/25 text-emerald-400/80",
 };
 
 function NewSessionInner() {
@@ -72,7 +72,6 @@ function NewSessionInner() {
     setStarting(true);
     setError(null);
 
-    // Fire override event if user chose a different duration from the recommendation.
     const recEventId = recommendation?.recommendation_event_id ?? null;
     if (
       recEventId &&
@@ -117,7 +116,7 @@ function NewSessionInner() {
   }
 
   if (loading && !recommendation) {
-    return <div className="h-64 animate-pulse rounded-xl bg-surface" />;
+    return <div className="h-64 animate-pulse rounded-2xl bg-surface" />;
   }
 
   const typeUsed = recommendation?.session_type_used;
@@ -125,17 +124,17 @@ function NewSessionInner() {
   const alternates = recommendation?.alternate_options ?? [];
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 animate-fade-in">
       <div>
-        <h1 className="text-lg font-semibold text-fg">New focus session</h1>
-        <p className="mt-0.5 text-[13px] text-muted">
+        <h1 className="font-display text-[22px] font-bold text-fg">New focus session</h1>
+        <p className="mt-1 text-[13px] text-muted/50">
           Choose your session type and focus duration.
         </p>
       </div>
 
       <SessionTypePicker value={sessionType} onChange={setSessionType} />
 
-      <div className="rounded-xl border border-edge bg-surface p-4 space-y-4">
+      <div className="rounded-2xl border border-edge/40 bg-surface p-5 space-y-5">
         <ContextSlider
           label="Energy level"
           hint="1 = exhausted · 5 = sharp"
@@ -152,11 +151,11 @@ function NewSessionInner() {
 
       {/* Explanation + confidence */}
       {explanation && (
-        <div className="rounded-xl border border-edge/60 bg-surface px-4 py-3 space-y-2">
+        <div className="rounded-2xl border border-edge/35 bg-surface px-5 py-4 space-y-2">
           <div className="flex items-start justify-between gap-3">
-            <p className="text-[13px] text-secondary leading-snug">{explanation.rationale}</p>
+            <p className="text-[13px] text-secondary/80 leading-snug">{explanation.rationale}</p>
             <span
-              className={`mt-0.5 flex-shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium ${
+              className={`mt-0.5 flex-shrink-0 rounded-full px-2.5 py-0.5 text-[10px] font-semibold ${
                 CONFIDENCE_BADGE[explanation.confidence_level] ?? CONFIDENCE_BADGE.learning
               }`}
             >
@@ -166,23 +165,23 @@ function NewSessionInner() {
           {Object.values(explanation.signals)
             .filter(Boolean)
             .map((signal, i) => (
-              <p key={i} className="text-[12px] text-muted/60">
+              <p key={i} className="text-[12px] text-muted/50">
                 · {signal}
               </p>
             ))}
-          <p className="text-[11px] text-muted/30 pt-0.5">{explanation.confidence_reason}</p>
+          <p className="text-[11px] text-muted/25 pt-0.5">{explanation.confidence_reason}</p>
         </div>
       )}
 
       {/* Type-specific notice */}
       {typeUsed && (
-        <p className="text-[12px] text-primary/60">
+        <p className="text-[12px] text-primary/55">
           Recommendation tailored for your{" "}
-          <span className="font-medium">{SESSION_TYPE_LABELS[typeUsed]}</span> sessions.
+          <span className="font-semibold">{SESSION_TYPE_LABELS[typeUsed]}</span> sessions.
         </p>
       )}
       {sessionType && !typeUsed && !loading && (
-        <p className="text-[12px] text-muted/40">
+        <p className="text-[12px] text-muted/35">
           Not enough {SESSION_TYPE_LABELS[sessionType].toLowerCase()} sessions yet — using your
           overall history.
         </p>
@@ -203,7 +202,7 @@ function NewSessionInner() {
       {/* Alternate options */}
       {alternates.length > 0 && (
         <div>
-          <p className="mb-2 text-[11px] text-muted/40 uppercase tracking-wide">
+          <p className="mb-2.5 font-display text-[11px] font-semibold uppercase tracking-[0.1em] text-muted/35">
             Alternate options
           </p>
           <div className="flex gap-2">
@@ -216,19 +215,19 @@ function NewSessionInner() {
                   setFocusSec(opt.focus_minutes * 60);
                   setBreakSec(opt.break_minutes * 60);
                 }}
-                className={`flex-1 rounded-lg border px-3 py-2.5 text-left transition-all ${
+                className={`flex-1 rounded-xl border px-3 py-3 text-left transition-all duration-150 ${
                   focusSec === opt.focus_minutes * 60
-                    ? "border-primary bg-primary/10 text-primary"
-                    : "border-edge bg-surface-elevated text-muted hover:text-secondary"
+                    ? "border-primary/40 bg-primary/[0.06] text-primary"
+                    : "border-edge/40 bg-surface text-muted/60 hover:border-edge/70 hover:text-secondary"
                 }`}
               >
-                <p className="text-[13px] font-medium">
+                <p className="text-[13px] font-semibold">
                   {opt.focus_minutes} min
-                  <span className="ml-1 text-[11px] font-normal opacity-60">
+                  <span className="ml-1 text-[11px] font-normal opacity-55">
                     / {opt.break_minutes} min break
                   </span>
                 </p>
-                <p className="text-[11px] opacity-50">{opt.label}</p>
+                <p className="text-[11px] opacity-45">{opt.label}</p>
               </button>
             ))}
           </div>
@@ -236,7 +235,7 @@ function NewSessionInner() {
       )}
 
       {error && (
-        <div className="rounded-xl border border-red-900/40 bg-red-950/30 px-4 py-3 text-[13px] text-red-400">
+        <div className="rounded-2xl border border-red-900/35 bg-red-950/25 px-5 py-3.5 text-[13px] text-red-400/90">
           {error}
         </div>
       )}
@@ -244,7 +243,7 @@ function NewSessionInner() {
       <button
         onClick={handleStart}
         disabled={starting}
-        className="w-full rounded-lg bg-primary px-4 py-2.5 text-[13px] font-medium text-white transition-colors hover:bg-primary-hover disabled:opacity-50"
+        className="btn-primary w-full rounded-xl px-4 py-3 text-[14px] font-semibold"
       >
         {starting ? "Starting…" : "Start session"}
       </button>
@@ -254,7 +253,7 @@ function NewSessionInner() {
 
 export default function NewSessionPage() {
   return (
-    <Suspense fallback={<div className="h-64 animate-pulse rounded-xl bg-surface" />}>
+    <Suspense fallback={<div className="h-64 animate-pulse rounded-2xl bg-surface" />}>
       <NewSessionInner />
     </Suspense>
   );
